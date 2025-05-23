@@ -14,3 +14,15 @@ export interface IntensityLevel {
   name: string;
   description: string;
 }
+
+export type FormalizerStyle = 
+  | "Plus professionnel"
+  | "Plus concis"
+  | "Plus amical"
+  | "Moins formel / Plus décontracté"
+  | "Plus direct"
+  | "Plus diplomate"
+  | "Simplifier (ELI5)"
+  | "Transformer en liste à puces"
+  | "Transformer en e-mail court"
+  | "Rendre sarcastique";

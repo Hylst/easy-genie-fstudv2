@@ -2,13 +2,14 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import type { Tool } from '@/types';
-import { Brain, LayoutGrid, ListTree, Timer, CalendarCheck, GitFork, Smile, Monitor } from 'lucide-react';
+import { Brain, LayoutGrid, ListTree, Timer, FileEdit, CalendarCheck, GitFork, Smile, Monitor } from 'lucide-react';
 
 const tools: Tool[] = [
   { id: 'taskbreaker', name: 'TaskBreaker', description: 'Décompose les tâches complexes en étapes gérables.', href: '/task-breaker', icon: ListTree, dataAiHint: 'checklist tasks' },
   { id: 'timefocus', name: 'TimeFocus', description: 'Minuteur configurable pour maintenir la concentration.', href: '/time-focus', icon: Timer, dataAiHint: 'clock timer' },
   { id: 'prioritygrid', name: 'PriorityGrid', description: 'Aide à prioriser les tâches selon l\'urgence et l\'importance.', href: '/priority-grid', icon: LayoutGrid, dataAiHint: 'grid chart' },
   { id: 'braindump', name: 'BrainDump', description: 'Interface pour vider son esprit et organiser ses pensées.', href: '/brain-dump', icon: Brain, dataAiHint: 'notebook thoughts' },
+  { id: 'formalizer', name: 'Formaliseur', description: 'Transforme le texte pour l\'adapter à différents styles et tons.', href: '/formalizer', icon: FileEdit, dataAiHint: 'text writing' },
   // { id: 'routinebuilder', name: 'RoutineBuilder', description: 'Création de routines quotidiennes avec rappels.', href: '/routine-builder', icon: CalendarCheck, dataAiHint: 'calendar schedule' },
   // { id: 'decisionhelper', name: 'DecisionHelper', description: 'Assistant pour prendre des décisions.', href: '/decision-helper', icon: GitFork, dataAiHint: 'choices path' },
   // { id: 'moodtracker', name: 'MoodTracker', description: 'Suivi d\'humeur et d\'énergie au fil du temps.', href: '/mood-tracker', icon: Smile, dataAiHint: 'emotions face' },
