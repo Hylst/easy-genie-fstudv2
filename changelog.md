@@ -32,18 +32,23 @@
         - Routines and steps are saved to/loaded from localStorage.
         - Routines displayed in an accordion.
         - Day selection for routines.
-        - Placeholder for voice input next to text fields.
-        - Placeholder "Obtenir des suggestions du Génie" button with mock suggestions based on intensity.
-    - Added `Routine`, `RoutineStep`, `DayOfWeek` types to `src/types/index.ts`.
+- **RoutineBuilder Tool Enhancements (Phase 1)**:
+    - Implemented Genkit AI flow `suggest-routine-flow.ts` for "Obtenir des suggestions du Génie" to provide actual routine/step suggestions based on user goal and intensity.
+        - AI suggestion is added directly to the routine list, marked as a suggestion.
+    - Implemented voice input using Web Speech API for:
+        - New routine name.
+        - New routine description.
+        - New step text for each routine.
+    - Added dialog to capture user's goal for AI routine suggestion.
+    - Visual feedback for active microphone and loading states.
 
 ## To Do
 
-- **RoutineBuilder Tool Enhancements**:
-    - Fully implement voice input for all text fields.
-    - Implement Genkit AI flow for "Obtenir des suggestions du Génie" to provide actual routine/step suggestions based on goals and intensity.
+- **RoutineBuilder Tool Enhancements (Phase 2)**:
     - Consider UI for reordering routines and steps.
     - Optional: Add specific time input for routines.
     - Optional: Interactive execution mode (checking off steps as done for a specific day).
+    - Refine voice input for editing existing step text (currently only appends).
 - Integrate Genkit AI more deeply into other existing tools (TaskBreaker suggestions, TimeFocus modes, PriorityGrid classification help) to make the "magic level" (intensity) impact their behavior.
 - Implement remaining tools from `tool-grid.tsx` with their specific functionalities and intensity level integrations:
     - DecisionHelper (placeholder page exists)
@@ -52,7 +57,7 @@
 - Add user authentication (e.g., Firebase Auth).
 - Flesh out "Étincelles" (Sparks) page content.
 - Implement actual email sending for contact form.
-- Refine UI/UX across all tools, including responsive design, accessibility, loading states, and error handling for new features (e.g., voice input).
+- Refine UI/UX across all tools, including responsive design, accessibility, loading states, and error handling for new features.
 - Add relevant image placeholders with `data-ai-hint` to all newly developed tool pages where appropriate.
 - Store tool data for authenticated users (e.g., using Firestore).
 - Add tests (unit, integration).

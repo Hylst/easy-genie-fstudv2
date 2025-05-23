@@ -10,26 +10,47 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { PlusCircle, Trash2, Edit3, Wand2, Mic, Save, UploadCloud } from 'lucide-react';
+import { PlusCircle, Trash2, Wand2, Mic, Loader2, Info } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import type { Routine, RoutineStep, DayOfWeek } from '@/types';
+import { DAYS_OF_WEEK_ARRAY } from '@/types';
+import { suggestRoutine, type SuggestRoutineOutput } from '@/ai/flows/suggest-routine-flow';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
 
 const ROUTINE_BUILDER_STORAGE_KEY = "easyGenieRoutineBuilder";
-const DAYS_OF_WEEK: DayOfWeek[] = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+type ActiveMicField = 
+  | 'newRoutineName' 
+  | 'newRoutineDescription' 
+  | `newStep_${string}` // routineId
+  | `editStep_${string}_${string}`; // routineId_stepId
 
 export function RoutineBuilderTool() {
   const [intensity, setIntensity] = useState<number>(3);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [newRoutineName, setNewRoutineName] = useState<string>('');
   const [newRoutineDescription, setNewRoutineDescription] = useState<string>('');
-  const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [newStepText, setNewStepText] = useState<{ [routineId: string]: string }>({});
+  
+  const [isFetchingSuggestions, setIsFetchingSuggestions] = useState<boolean>(false);
+  const [suggestionGoal, setSuggestionGoal] = useState<string>('');
+  const [showGoalDialog, setShowGoalDialog] = useState<boolean>(false);
 
   const { toast } = useToast();
-  // Refs for voice input (placeholders for now)
-  const routineNameRecognitionRef = useRef<any>(null);
-  const routineDescRecognitionRef = useRef<any>(null);
-  const stepTextRecognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<any>(null);
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [activeMicField, setActiveMicField] = useState<ActiveMicField | null>(null);
 
 
   useEffect(() => {
@@ -37,8 +58,70 @@ export function RoutineBuilderTool() {
     if (savedRoutines) {
       setRoutines(JSON.parse(savedRoutines));
     }
-    // Placeholder for SpeechRecognition initialization for multiple inputs
-  }, []);
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'fr-FR';
+
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (activeMicField === 'newRoutineName') {
+          setNewRoutineName(prev => prev ? prev + ' ' + transcript : transcript);
+        } else if (activeMicField === 'newRoutineDescription') {
+          setNewRoutineDescription(prev => prev ? prev + ' ' + transcript : transcript);
+        } else if (activeMicField?.startsWith('newStep_')) {
+          const routineId = activeMicField.split('_')[1];
+          setNewStepText(prev => ({ ...prev, [routineId]: (prev[routineId] || '') + ' ' + transcript }));
+        } else if (activeMicField?.startsWith('editStep_')) {
+          const [, routineId, stepId] = activeMicField.split('_');
+          setRoutines(prevRoutines => prevRoutines.map(r => 
+            r.id === routineId ? { 
+              ...r, 
+              steps: r.steps.map(s => s.id === stepId ? {...s, text: s.text + ' ' + transcript} : s) 
+            } : r
+          ));
+        }
+        toast({ title: "Texte ajouté !", description: "Votre voix a été transcrite." });
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error("Speech recognition error", event.error);
+        toast({ title: "Erreur de reconnaissance", description: `Le génie n'a pas pu comprendre: ${event.error}`, variant: "destructive" });
+      };
+      
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+        setActiveMicField(null);
+      };
+
+    } else {
+      console.warn("Speech Recognition API not supported in this browser.");
+    }
+     return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, [activeMicField]); // Re-run if activeMicField changes to correctly update state
+
+  useEffect(() => {
+    if (isListening && recognitionRef.current) {
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        console.error("Error starting recognition:", e);
+        setIsListening(false);
+        setActiveMicField(null);
+        toast({title: "Erreur Micro", description: "Impossible de démarrer l'écoute.", variant: "destructive"});
+      }
+    } else if (!isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+  }, [isListening]);
+
 
   const saveRoutines = (updatedRoutines: Routine[]) => {
     localStorage.setItem(ROUTINE_BUILDER_STORAGE_KEY, JSON.stringify(updatedRoutines));
@@ -74,7 +157,7 @@ export function RoutineBuilderTool() {
     const updatedRoutines = routines.map(r => {
       if (r.id === routineId) {
         const newDays = r.days.includes(day) ? r.days.filter(d => d !== day) : [...r.days, day];
-        return { ...r, days: newDays.sort((a, b) => DAYS_OF_WEEK.indexOf(a) - DAYS_OF_WEEK.indexOf(b)) };
+        return { ...r, days: newDays.sort((a, b) => DAYS_OF_WEEK_ARRAY.indexOf(a) - DAYS_OF_WEEK_ARRAY.indexOf(b)) };
       }
       return r;
     });
@@ -115,38 +198,70 @@ export function RoutineBuilderTool() {
   };
 
   const handleToggleStepCompletion = (routineId: string, stepId: string) => {
-    // For now, just visual, could be used for tracking later
     const updatedRoutines = routines.map(r => 
       r.id === routineId ? { 
         ...r, 
         steps: r.steps.map(s => s.id === stepId ? {...s, isCompleted: !s.isCompleted} : s) 
       } : r
     );
-    // No saveRoutines here if it's just a visual toggle for an "active" session
-    setRoutines(updatedRoutines); 
+    setRoutines(updatedRoutines); // Visual toggle, save if persistence needed for completion state
   };
 
-
-  // Placeholder functions for voice input
-  const handleVoiceInput = (inputType: 'routineName' | 'routineDesc' | `stepText_${string}`) => {
-    toast({ title: "Saisie vocale (Bientôt !)", description: "Cette fonctionnalité arrive bientôt pour remplir les champs." });
-    // Logic for specific input field would go here, e.g. using setInputText(transcript)
-  };
-
-  const handleGenieSuggestions = () => {
-    let suggestion = "Le Génie est en pause café.";
-    if (intensity >= 3 && intensity <= 4) {
-      suggestion = "Le Génie suggère: 'Routine Matinale: 1. Réveil & Hydratation, 2. Méditation 10min, 3. Planification de la journée'.";
-    } else if (intensity >= 5) {
-      suggestion = "Le Génie insiste: 'Routine de Soir Extrême: 1. Zéro écran 1h avant coucher, 2. Lecture apaisante 30min, 3. Sommeil réparateur 8h MINIMUM!'.";
+  const handleToggleVoiceInput = (micField: ActiveMicField) => {
+    if (!recognitionRef.current) {
+      toast({ title: "Micro non supporté", description: "La saisie vocale n'est pas disponible sur ce navigateur.", variant: "destructive" });
+      return;
     }
-    toast({ title: "Suggestion du Génie (Démo)", description: suggestion, duration: 7000 });
-    // Future: Call Genkit flow: createRoutineSuggestionsFlow({goal: '...', intensity});
+    if (isListening && activeMicField === micField) {
+      setIsListening(false); // Stop current listening
+    } else {
+      setActiveMicField(micField);
+      setIsListening(true); // Start listening for this field
+    }
+  };
+
+  const triggerGenieSuggestions = async () => {
+    if (!suggestionGoal.trim()) {
+      toast({ title: "Objectif manquant", description: "Veuillez indiquer au Génie quel est votre objectif pour cette routine.", variant: "destructive" });
+      return;
+    }
+    setShowGoalDialog(false);
+    setIsFetchingSuggestions(true);
+    try {
+      const result: SuggestRoutineOutput = await suggestRoutine({
+        goal: suggestionGoal,
+        intensityLevel: intensity,
+        existingRoutineNames: routines.map(r => r.name)
+      });
+
+      const suggestedSteps: RoutineStep[] = result.steps.map(stepText => ({
+        id: crypto.randomUUID(),
+        text: stepText,
+        isCompleted: false,
+      }));
+
+      const newSuggestedRoutine: Routine = {
+        id: crypto.randomUUID(),
+        name: result.name || `Suggestion du Génie pour "${suggestionGoal}"`,
+        description: result.description,
+        days: result.days || [],
+        steps: suggestedSteps,
+        isSuggestion: true,
+      };
+      saveRoutines([...routines, newSuggestedRoutine]);
+      toast({ title: "Suggestion du Génie ajoutée!", description: `La routine "${newSuggestedRoutine.name}" a été ajoutée à votre liste.` });
+      setSuggestionGoal('');
+    } catch (error) {
+      console.error("Error getting routine suggestions:", error);
+      toast({ title: "Erreur de suggestion", description: "Le Génie n'a pas pu suggérer de routine. Essayez à nouveau.", variant: "destructive" });
+    } finally {
+      setIsFetchingSuggestions(false);
+    }
   };
   
   const intensityDescription = () => {
-    if (intensity <= 2) return "Le Génie vous laisse maître de vos routines.";
-    if (intensity <= 4) return "Le Génie peut vous aider à structurer vos routines avec des suggestions.";
+    if (intensity <= 2) return "Le Génie vous laisse maître de vos routines, mais peut donner un coup de pouce si demandé.";
+    if (intensity <= 4) return "Le Génie peut vous aider à structurer vos routines avec des suggestions pertinentes.";
     return "Le Génie est prêt à vous guider de manière plus directive pour optimiser vos routines !";
   }
 
@@ -154,7 +269,7 @@ export function RoutineBuilderTool() {
     <Card className="w-full max-w-3xl mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="text-3xl font-bold text-primary flex items-center gap-2">
-            <CalendarCheck className="h-8 w-8"/> RoutineBuilder Magique
+            <Info className="h-8 w-8"/> RoutineBuilder Magique {/* Placeholder Icon */}
         </CardTitle>
         <CardDescription>Organisez votre quotidien avec des routines personnalisées. Le Génie vous aide à construire des habitudes solides, adaptées à votre énergie.</CardDescription>
       </CardHeader>
@@ -167,7 +282,7 @@ export function RoutineBuilderTool() {
           <form onSubmit={handleAddRoutine} className="space-y-4">
             <div>
               <Label htmlFor="new-routine-name">Nom de la routine</Label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <Input
                   id="new-routine-name"
                   value={newRoutineName}
@@ -175,15 +290,19 @@ export function RoutineBuilderTool() {
                   placeholder="Ex: Routine du matin, Préparation semaine"
                   required
                   className="flex-grow"
+                  disabled={isListening && activeMicField !== 'newRoutineName'}
                 />
-                <Button variant="ghost" size="icon" type="button" onClick={() => handleVoiceInput('routineName')} aria-label="Dicter le nom">
+                <Button variant="ghost" size="icon" type="button" onClick={() => handleToggleVoiceInput('newRoutineName')} aria-label="Dicter le nom"
+                  className={isListening && activeMicField === 'newRoutineName' ? 'text-red-500 animate-pulse' : ''}
+                  disabled={isListening && activeMicField !== 'newRoutineName'}
+                >
                   <Mic className="h-5 w-5" />
                 </Button>
               </div>
             </div>
             <div>
               <Label htmlFor="new-routine-description">Description (optionnel)</Label>
-               <div className="flex items-center gap-2">
+               <div className="flex items-center gap-1">
                 <Textarea
                   id="new-routine-description"
                   value={newRoutineDescription}
@@ -191,19 +310,48 @@ export function RoutineBuilderTool() {
                   placeholder="Ex: Pour démarrer la journée avec énergie et focus"
                   rows={2}
                   className="flex-grow"
+                  disabled={isListening && activeMicField !== 'newRoutineDescription'}
                 />
-                 <Button variant="ghost" size="icon" type="button" onClick={() => handleVoiceInput('routineDesc')} aria-label="Dicter la description">
+                 <Button variant="ghost" size="icon" type="button" onClick={() => handleToggleVoiceInput('newRoutineDescription')} aria-label="Dicter la description"
+                  className={isListening && activeMicField === 'newRoutineDescription' ? 'text-red-500 animate-pulse' : ''}
+                  disabled={isListening && activeMicField !== 'newRoutineDescription'}
+                 >
                   <Mic className="h-5 w-5" />
                 </Button>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-                <Button type="submit" className="w-full sm:w-auto">
+                <Button type="submit" className="w-full sm:w-auto" disabled={isListening || isFetchingSuggestions}>
                     <PlusCircle className="mr-2 h-5 w-5" /> Ajouter la Routine
                 </Button>
-                <Button type="button" variant="outline" onClick={handleGenieSuggestions} className="w-full sm:w-auto">
-                    <Wand2 className="mr-2 h-5 w-5" /> Suggestions du Génie
-                </Button>
+                
+                <AlertDialog open={showGoalDialog} onOpenChange={setShowGoalDialog}>
+                  <AlertDialogTrigger asChild>
+                    <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={isListening || isFetchingSuggestions}>
+                        {isFetchingSuggestions ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Wand2 className="mr-2 h-5 w-5" />}
+                        Suggestions du Génie
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Quel est votre objectif pour cette routine ?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Décrivez brièvement ce que vous voulez accomplir avec cette nouvelle routine (ex: "être plus productif le matin", "me détendre avant de dormir", "planifier mes séances de sport").
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <Input 
+                      value={suggestionGoal}
+                      onChange={(e) => setSuggestionGoal(e.target.value)}
+                      placeholder="Ex: Productivité matinale"
+                      onKeyPress={(e) => { if (e.key === 'Enter') triggerGenieSuggestions(); }}
+                    />
+                    <AlertDialogFooter>
+                      <AlertDialogCancel onClick={() => setSuggestionGoal('')}>Annuler</AlertDialogCancel>
+                      <AlertDialogAction onClick={triggerGenieSuggestions} disabled={!suggestionGoal.trim()}>Obtenir Suggestion</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
             </div>
           </form>
         </Card>
@@ -211,12 +359,12 @@ export function RoutineBuilderTool() {
         {routines.length > 0 && (
           <div className="space-y-4">
             <h3 className="text-2xl font-semibold text-foreground mt-6">Mes Routines</h3>
-            <Accordion type="single" collapsible className="w-full">
+            <Accordion type="single" collapsible className="w-full" defaultValue={routines.find(r => r.isSuggestion)?.id}>
               {routines.map((routine) => (
-                <AccordionItem value={routine.id} key={routine.id} className="bg-card border rounded-lg mb-3 shadow">
+                <AccordionItem value={routine.id} key={routine.id} className={`bg-card border rounded-lg mb-3 shadow ${routine.isSuggestion ? 'border-primary border-2' : ''}`}>
                   <AccordionTrigger className="px-4 py-3 text-lg hover:no-underline">
                     <div className="flex justify-between items-center w-full">
-                        <span>{routine.name}</span>
+                        <span className="flex items-center gap-2">{routine.name} {routine.isSuggestion && <Wand2 className="h-4 w-4 text-primary"/>}</span>
                         <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDeleteRoutine(routine.id);}} aria-label="Supprimer la routine">
                             <Trash2 className="h-5 w-5 text-destructive" />
                         </Button>
@@ -228,7 +376,7 @@ export function RoutineBuilderTool() {
                     <div className="mb-3">
                       <Label className="block mb-2 font-medium">Jours de la semaine :</Label>
                       <div className="flex flex-wrap gap-2">
-                        {DAYS_OF_WEEK.map(day => (
+                        {DAYS_OF_WEEK_ARRAY.map(day => (
                           <Button
                             key={day}
                             variant={routine.days.includes(day) ? "default" : "outline"}
@@ -246,7 +394,7 @@ export function RoutineBuilderTool() {
                       {routine.steps.length === 0 && <p className="text-sm text-muted-foreground italic">Aucune étape définie.</p>}
                       <ul className="space-y-2">
                         {routine.steps.map(step => (
-                          <li key={step.id} className="flex items-center gap-2 p-2 border rounded-md bg-background hover:bg-muted/50">
+                          <li key={step.id} className="flex items-center gap-1 p-2 border rounded-md bg-background hover:bg-muted/50">
                              <Checkbox 
                                 id={`step-${step.id}`} 
                                 checked={step.isCompleted} 
@@ -258,28 +406,37 @@ export function RoutineBuilderTool() {
                               onChange={(e) => handleStepTextChange(routine.id, step.id, e.target.value)}
                               className={`flex-grow bg-transparent border-0 focus:ring-0 ${step.isCompleted ? 'line-through text-muted-foreground' : ''}`}
                               placeholder="Description de l'étape"
+                              disabled={isListening && activeMicField !== `editStep_${routine.id}_${step.id}`}
                             />
-                            <Button variant="ghost" size="icon" onClick={() => handleVoiceInput(`stepText_${step.id}`)} aria-label="Dicter l'étape">
+                            {/* Voice input for existing steps could be added if needed, similar to new steps but targeting specific step */}
+                            {/* <Button variant="ghost" size="icon" onClick={() => handleToggleVoiceInput(`editStep_${routine.id}_${step.id}`)} aria-label="Dicter l'étape"
+                              className={isListening && activeMicField === `editStep_${routine.id}_${step.id}` ? 'text-red-500 animate-pulse' : ''}
+                              disabled={isListening && activeMicField !== `editStep_${routine.id}_${step.id}`}
+                            >
                                 <Mic className="h-4 w-4" />
-                            </Button>
+                            </Button> */}
                             <Button variant="ghost" size="icon" onClick={() => handleDeleteStep(routine.id, step.id)} aria-label="Supprimer l'étape">
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </li>
                         ))}
                       </ul>
-                      <form className="mt-3 flex items-center gap-2" onSubmit={(e) => {e.preventDefault(); handleAddStep(routine.id)}}>
+                      <form className="mt-3 flex items-center gap-1" onSubmit={(e) => {e.preventDefault(); handleAddStep(routine.id)}}>
                         <Input
                           value={newStepText[routine.id] || ''}
                           onChange={(e) => setNewStepText(prev => ({ ...prev, [routine.id]: e.target.value }))}
                           placeholder="Nouvelle étape..."
                           className="flex-grow"
+                          disabled={isListening && activeMicField !== `newStep_${routine.id}`}
                         />
-                         <Button variant="ghost" size="icon" type="button" onClick={() => handleVoiceInput(`stepText_new_${routine.id}`)} aria-label="Dicter la nouvelle étape">
+                         <Button variant="ghost" size="icon" type="button" onClick={() => handleToggleVoiceInput(`newStep_${routine.id}`)} aria-label="Dicter la nouvelle étape"
+                            className={isListening && activeMicField === `newStep_${routine.id}` ? 'text-red-500 animate-pulse' : ''}
+                            disabled={isListening && activeMicField !== `newStep_${routine.id}`}
+                          >
                             <Mic className="h-5 w-5" />
                         </Button>
-                        <Button type="submit" size="sm" variant="outline">
-                          <PlusCircle className="h-4 w-4 mr-1"/> Ajouter Étape
+                        <Button type="submit" size="sm" variant="outline" disabled={isListening}>
+                          <PlusCircle className="h-4 w-4 mr-1"/> Ajouter
                         </Button>
                       </form>
                     </div>
@@ -289,7 +446,8 @@ export function RoutineBuilderTool() {
             </Accordion>
           </div>
         )}
-         {routines.length === 0 && <p className="text-center text-muted-foreground mt-6">Commencez par créer votre première routine !</p>}
+         {routines.length === 0 && !isFetchingSuggestions && <p className="text-center text-muted-foreground mt-6">Commencez par créer votre première routine ou demandez une suggestion au Génie !</p>}
+         {isFetchingSuggestions && <div className="flex justify-center mt-6"><Loader2 className="h-8 w-8 animate-spin text-primary"/> <p className="ml-2">Le Génie prépare une routine...</p></div>}
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground text-center w-full">

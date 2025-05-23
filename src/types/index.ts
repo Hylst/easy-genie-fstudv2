@@ -27,7 +27,9 @@ export type FormalizerStyle =
   | "Transformer en e-mail court"
   | "Rendre sarcastique";
 
-export type DayOfWeek = 'Lun' | 'Mar' | 'Mer' | 'Jeu' | 'Ven' | 'Sam' | 'Dim';
+export const DAYS_OF_WEEK_ARRAY = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'] as const;
+export type DayOfWeek = typeof DAYS_OF_WEEK_ARRAY[number];
+
 
 export interface RoutineStep {
   id: string;
@@ -41,5 +43,6 @@ export interface Routine {
   description?: string;
   days: DayOfWeek[];
   steps: RoutineStep[];
+  isSuggestion?: boolean; // To mark AI suggested routines
   // time?: string; // Optional: specific time for the routine
 }
