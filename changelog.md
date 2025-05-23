@@ -12,6 +12,7 @@
 - Basic Genkit setup (`ai/genkit.ts`).
 - Toaster component for notifications.
 - Implemented "Formaliseur" (Formalizer) tool with basic UI and Genkit AI integration.
+- Configured Gemini API Key in environment variables.
 
 ## To Do
 
