@@ -10,7 +10,7 @@ const tools: Tool[] = [
   { id: 'prioritygrid', name: 'PriorityGrid', description: 'Aide à prioriser les tâches selon l\'urgence et l\'importance.', href: '/priority-grid', icon: LayoutGrid, dataAiHint: 'crystal grid' },
   { id: 'braindump', name: 'BrainDump', description: 'Interface pour vider son esprit et organiser ses pensées.', href: '/brain-dump', icon: Brain, dataAiHint: 'thought cauldron' },
   { id: 'formalizer', name: 'Formaliseur', description: 'Transforme le texte pour l\'adapter à différents styles et tons.', href: '/formalizer', icon: FileEdit, dataAiHint: 'quill writing' },
-  // { id: 'routinebuilder', name: 'RoutineBuilder', description: 'Création de routines quotidiennes avec rappels.', href: '/routine-builder', icon: CalendarCheck, dataAiHint: 'genie planner' },
+  { id: 'routinebuilder', name: 'RoutineBuilder', description: 'Création de routines quotidiennes avec rappels.', href: '/routine-builder', icon: CalendarCheck, dataAiHint: 'genie planner' },
   // { id: 'decisionhelper', name: 'DecisionHelper', description: 'Assistant pour prendre des décisions.', href: '/decision-helper', icon: GitFork, dataAiHint: 'magic compass' },
   // { id: 'moodtracker', name: 'MoodTracker', description: 'Suivi d\'humeur et d\'énergie au fil du temps.', href: '/mood-tracker', icon: Smile, dataAiHint: 'mood potion' },
   // { id: 'focusmode', name: 'FocusMode', description: 'Page web minimaliste pour travailler sans distractions.', href: '/focus-mode', icon: Monitor, dataAiHint: 'focus crystal' },
