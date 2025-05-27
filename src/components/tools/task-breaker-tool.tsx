@@ -1,13 +1,12 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Keep for potential future use, not primary for subtasks
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
-import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2 } from 'lucide-react';
+import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { breakdownTask } from '@/ai/flows/breakdown-task-flow';
 
@@ -15,27 +14,43 @@ interface SubTask {
   id: string;
   text: string;
   isCompleted: boolean;
+  subTasks: SubTask[]; // Children tasks
+  depth: number;
+  isExpanded?: boolean; // For UI toggle to show/hide children
 }
 
 const TASK_BREAKER_STORAGE_KEY_MAIN = "easyGenieTaskBreakerMain";
-const TASK_BREAKER_STORAGE_KEY_SUBTASKS = "easyGenieTaskBreakerSubtasks";
-
+const TASK_BREAKER_STORAGE_KEY_SUBTASKS = "easyGenieTaskBreakerSubtasks_v2"; // Changed key for new structure
 
 export function TaskBreakerTool() {
   const [intensity, setIntensity] = useState<number>(3);
   const [mainTask, setMainTask] = useState<string>('');
   const [subTasks, setSubTasks] = useState<SubTask[]>([]);
-  const [newSubTaskText, setNewSubTaskText] = useState<string>('');
+  
+  // For adding sub-task directly under the main task
+  const [newDirectSubTaskText, setNewDirectSubTaskText] = useState<string>('');
+  // For adding sub-tasks under existing sub-tasks (parentId -> text)
+  const [newChildSubTaskText, setNewChildSubTaskText] = useState<{ [parentId: string]: string }>({});
+
   const [isLoadingAI, setIsLoadingAI] = useState<boolean>(false);
+  const [loadingAITaskId, setLoadingAITaskId] = useState<string | null>(null); // To show spinner on specific task
   const [isListening, setIsListening] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
   const { toast } = useToast();
 
+  // Load from localStorage
   useEffect(() => {
     const savedMainTask = localStorage.getItem(TASK_BREAKER_STORAGE_KEY_MAIN);
     if (savedMainTask) setMainTask(savedMainTask);
     const savedSubTasks = localStorage.getItem(TASK_BREAKER_STORAGE_KEY_SUBTASKS);
-    if (savedSubTasks) setSubTasks(JSON.parse(savedSubTasks));
+    if (savedSubTasks) {
+      try {
+        setSubTasks(JSON.parse(savedSubTasks));
+      } catch (e) {
+        console.error("Failed to parse subtasks from localStorage", e);
+        localStorage.removeItem(TASK_BREAKER_STORAGE_KEY_SUBTASKS); // Clear corrupted data
+      }
+    }
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -58,13 +73,14 @@ export function TaskBreakerTool() {
     } else {
       console.warn("Speech Recognition API not supported.");
     }
-    return () => {
+     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
     };
   }, []);
 
+  // Mic control
   useEffect(() => {
     if (isListening && recognitionRef.current) {
       try {
@@ -78,6 +94,7 @@ export function TaskBreakerTool() {
     }
   }, [isListening]);
 
+  // Save to localStorage
   useEffect(() => {
     localStorage.setItem(TASK_BREAKER_STORAGE_KEY_MAIN, mainTask);
   }, [mainTask]);
@@ -85,7 +102,6 @@ export function TaskBreakerTool() {
   useEffect(() => {
     localStorage.setItem(TASK_BREAKER_STORAGE_KEY_SUBTASKS, JSON.stringify(subTasks));
   }, [subTasks]);
-
 
   const handleToggleVoiceInput = () => {
     if (!recognitionRef.current) {
@@ -95,51 +111,143 @@ export function TaskBreakerTool() {
     setIsListening(prev => !prev);
   };
 
-  const handleGenieBreakdown = async () => {
-    if (!mainTask.trim()) {
-      toast({ title: "Tâche principale manquante", description: "Veuillez entrer une tâche principale à décomposer.", variant: "destructive" });
-      setSubTasks([]);
+  // --- Recursive Helper Functions ---
+  const recursiveUpdate = (
+    tasks: SubTask[], 
+    targetId: string, 
+    updateFn: (task: SubTask) => SubTask
+  ): SubTask[] => {
+    return tasks.map(task => {
+      if (task.id === targetId) {
+        return updateFn(task);
+      }
+      if (task.subTasks && task.subTasks.length > 0) {
+        return { ...task, subTasks: recursiveUpdate(task.subTasks, targetId, updateFn) };
+      }
+      return task;
+    });
+  };
+
+  const recursiveDelete = (tasks: SubTask[], targetId: string): SubTask[] => {
+    return tasks.filter(task => {
+      if (task.id === targetId) {
+        return false; // Remove this task
+      }
+      if (task.subTasks && task.subTasks.length > 0) {
+        task.subTasks = recursiveDelete(task.subTasks, targetId);
+      }
+      return true;
+    });
+  };
+  
+  const recursiveFindAndAdd = (
+    tasks: SubTask[],
+    parentId: string,
+    newTasks: SubTask[]
+  ): SubTask[] => {
+    return tasks.map(task => {
+      if (task.id === parentId) {
+        return { ...task, subTasks: [...task.subTasks, ...newTasks], isExpanded: true };
+      }
+      if (task.subTasks && task.subTasks.length > 0) {
+        return { ...task, subTasks: recursiveFindAndAdd(task.subTasks, parentId, newTasks) };
+      }
+      return task;
+    });
+  };
+  // --- End Recursive Helper Functions ---
+
+  const handleGenieBreakdown = async (taskTextToBreak: string, parentId: string | null) => {
+    if (!taskTextToBreak.trim()) {
+      toast({ title: "Tâche manquante", description: "Veuillez entrer une tâche à décomposer.", variant: "destructive" });
       return;
     }
     setIsLoadingAI(true);
+    setLoadingAITaskId(parentId); // Mark which task is loading, or null for main task
     try {
-      const result = await breakdownTask({ mainTaskText: mainTask, intensityLevel: intensity });
-      const newSubTasks = result.suggestedSubTasks.map(text => ({
+      const result = await breakdownTask({ mainTaskText: taskTextToBreak, intensityLevel: intensity });
+      const currentDepth = parentId ? (findTaskById(subTasks, parentId)?.depth ?? -1) +1 : 0;
+
+      const newTasksFromAI: SubTask[] = result.suggestedSubTasks.map(text => ({
         id: crypto.randomUUID(),
         text,
         isCompleted: false,
+        subTasks: [],
+        depth: currentDepth,
+        isExpanded: false,
       }));
-      setSubTasks(newSubTasks);
-      if (newSubTasks.length > 0) {
+
+      if (parentId === null) { // Breaking down the main task
+        setSubTasks(newTasksFromAI);
+      } else { // Breaking down an existing sub-task
+        setSubTasks(prevTasks => recursiveFindAndAdd(prevTasks, parentId, newTasksFromAI));
+      }
+
+      if (newTasksFromAI.length > 0) {
         toast({ title: "Tâche décomposée par le Génie!", description: "Voici les sous-tâches suggérées." });
       } else {
-        toast({ title: "Le Génie a besoin de plus de détails", description: "Aucune sous-tâche n'a pu être générée. Essayez une tâche plus claire ou une intensité différente.", variant: "default" });
+        toast({ title: "Le Génie a besoin de plus de détails", description: "Aucune sous-tâche n'a pu être générée.", variant: "default" });
       }
     } catch (error) {
       console.error("Error breaking down task with AI:", error);
       toast({ title: "Erreur du Génie", description: "Le Génie n'a pas pu décomposer la tâche.", variant: "destructive" });
     } finally {
       setIsLoadingAI(false);
+      setLoadingAITaskId(null);
     }
-  };
-
-  const handleAddSubTask = () => {
-    if (newSubTaskText.trim()) {
-      setSubTasks([...subTasks, { id: crypto.randomUUID(), text: newSubTaskText, isCompleted: false }]);
-      setNewSubTaskText('');
-    }
-  };
-
-  const toggleSubTask = (id: string) => {
-    setSubTasks(subTasks.map(task => task.id === id ? { ...task, isCompleted: !task.isCompleted } : task));
-  };
-
-  const deleteSubTask = (id: string) => {
-    setSubTasks(subTasks.filter(task => task.id !== id));
   };
   
-  const handleSubTaskTextChange = (id: string, newText: string) => {
-    setSubTasks(subTasks.map(task => task.id === id ? { ...task, text: newText } : task));
+  const findTaskById = (tasksToSearch: SubTask[], id: string): SubTask | null => {
+    for (const task of tasksToSearch) {
+      if (task.id === id) return task;
+      if (task.subTasks && task.subTasks.length > 0) {
+        const found = findTaskById(task.subTasks, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+
+  const handleAddManualSubTask = (parentId: string | null) => {
+    const text = parentId ? (newChildSubTaskText[parentId] || '').trim() : newDirectSubTaskText.trim();
+    if (!text) return;
+
+    const parentTask = parentId ? findTaskById(subTasks, parentId) : null;
+    const depth = parentTask ? parentTask.depth + 1 : 0;
+
+    const newManualTask: SubTask = {
+      id: crypto.randomUUID(),
+      text,
+      isCompleted: false,
+      subTasks: [],
+      depth,
+      isExpanded: false,
+    };
+
+    if (parentId === null) { // Adding to root
+      setSubTasks(prevTasks => [...prevTasks, newManualTask]);
+      setNewDirectSubTaskText('');
+    } else { // Adding as a child to an existing sub-task
+      setSubTasks(prevTasks => recursiveFindAndAdd(prevTasks, parentId, [newManualTask]));
+      setNewChildSubTaskText(prev => ({ ...prev, [parentId]: '' }));
+    }
+  };
+
+  const toggleSubTaskCompletion = (taskId: string) => {
+    setSubTasks(prevTasks => recursiveUpdate(prevTasks, taskId, task => ({ ...task, isCompleted: !task.isCompleted })));
+  };
+  
+  const toggleSubTaskExpansion = (taskId: string) => {
+    setSubTasks(prevTasks => recursiveUpdate(prevTasks, taskId, task => ({ ...task, isExpanded: !(task.isExpanded ?? false) })));
+  };
+
+  const handleDeleteSubTask = (taskId: string) => {
+    setSubTasks(prevTasks => recursiveDelete(prevTasks, taskId));
+  };
+  
+  const handleSubTaskTextChange = (taskId: string, newText: string) => {
+    setSubTasks(prevTasks => recursiveUpdate(prevTasks, taskId, task => ({ ...task, text: newText })));
   };
 
   const intensityDescription = () => {
@@ -148,11 +256,72 @@ export function TaskBreakerTool() {
     return "Le Génie fournira une décomposition très fine et détaillée.";
   };
 
+  // Recursive component to render tasks
+  const RenderTaskNode: React.FC<{ task: SubTask; currentDepth: number }> = ({ task, currentDepth }) => {
+    const isCurrentlyLoadingAI = isLoadingAI && loadingAITaskId === task.id;
+    const hasChildren = task.subTasks && task.subTasks.length > 0;
+
+    return (
+      <div style={{ marginLeft: `${currentDepth * 20}px` }} className="mb-2">
+        <div className={`flex items-center gap-2 p-2 border rounded-md bg-background hover:bg-muted/50 transition-colors ${task.isCompleted ? 'opacity-70' : ''}`}>
+          {hasChildren || task.subTasks?.length > 0 ? ( // Check if it can have children or already has
+             <Button variant="ghost" size="icon" onClick={() => toggleSubTaskExpansion(task.id)} className="h-6 w-6 p-0">
+              {task.isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </Button>
+          ) : (
+            <span className="w-6"></span> // Placeholder for alignment
+          )}
+          <Button variant="ghost" size="icon" onClick={() => toggleSubTaskCompletion(task.id)} aria-label={task.isCompleted ? "Marquer comme non terminée" : "Marquer comme terminée"} className="h-6 w-6 p-0">
+            {task.isCompleted ? <CheckSquare className="text-green-500 h-4 w-4" /> : <Square className="text-muted-foreground h-4 w-4" />}
+          </Button>
+          <Input 
+            value={task.text} 
+            onChange={(e) => handleSubTaskTextChange(task.id, e.target.value)}
+            className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 ${task.isCompleted ? 'line-through text-muted-foreground' : ''}`}
+            disabled={isLoadingAI}
+          />
+          <Button variant="ghost" size="icon" onClick={() => handleGenieBreakdown(task.text, task.id)} aria-label="Décomposer cette tâche avec le Génie" disabled={isCurrentlyLoadingAI || isLoadingAI} className="h-6 w-6 p-0">
+            {isCurrentlyLoadingAI ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="text-primary h-4 w-4" />}
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => handleDeleteSubTask(task.id)} aria-label="Supprimer la sous-tâche" disabled={isLoadingAI} className="h-6 w-6 p-0">
+            <Trash2 className="text-destructive w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* Input for adding new child to this task */}
+        {task.isExpanded && ( // Only show input if parent is expanded, or always show if we want to allow adding to unexpanded
+        <div style={{ marginLeft: `20px` }} className="mt-1 pl-1 flex gap-2 items-center">
+          <Input
+            value={newChildSubTaskText[task.id] || ''}
+            onChange={(e) => setNewChildSubTaskText(prev => ({ ...prev, [task.id]: e.target.value }))}
+            placeholder="Ajouter une sous-tâche ici..."
+            className="flex-grow h-8 text-sm"
+            onKeyPress={(e) => { if (e.key === 'Enter') handleAddManualSubTask(task.id); }}
+            disabled={isLoadingAI}
+          />
+          <Button onClick={() => handleAddManualSubTask(task.id)} variant="outline" size="sm" disabled={isLoadingAI} className="h-8">
+            <PlusCircle className="mr-1 h-3 w-3" /> Ajouter
+          </Button>
+        </div>
+        )}
+        
+        {task.isExpanded && task.subTasks && task.subTasks.length > 0 && (
+          <div className="mt-2">
+            {task.subTasks.map(childTask => (
+              <RenderTaskNode key={childTask.id} task={childTask} currentDepth={childTask.depth} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+
   return (
-    <Card className="w-full max-w-2xl mx-auto shadow-xl">
+    <Card className="w-full max-w-3xl mx-auto shadow-xl"> {/* Increased max-width for better nesting visibility */}
       <CardHeader>
         <CardTitle className="text-3xl font-bold text-primary">TaskBreaker Magique</CardTitle>
-        <CardDescription>Décomposez vos tâches complexes. Le Génie vous aide à voir plus clair selon le niveau de magie choisi !</CardDescription>
+        <CardDescription>Décomposez vos tâches complexes. Le Génie vous aide à voir plus clair, niveau par niveau !</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <IntensitySelector value={intensity} onChange={setIntensity} />
@@ -165,7 +334,7 @@ export function TaskBreakerTool() {
               id="main-task"
               value={mainTask}
               onChange={(e) => setMainTask(e.target.value)}
-              placeholder="Ex: Organiser mes vacances d'été"
+              placeholder="Ex: Planifier un voyage épique"
               className="flex-grow"
               disabled={isLoadingAI || isListening}
             />
@@ -175,59 +344,50 @@ export function TaskBreakerTool() {
               onClick={handleToggleVoiceInput}
               className={`${isListening ? 'text-red-500 animate-pulse' : ''}`}
               aria-label={isListening ? "Arrêter l'écoute" : "Dicter la tâche principale"}
-              disabled={isLoadingAI || (isListening && recognitionRef.current && recognitionRef.current.isListening)} // More robust disabled check
+              disabled={isLoadingAI || (isListening && recognitionRef.current && recognitionRef.current.isListening)}
             >
               <Mic className="h-5 w-5" />
             </Button>
-            <Button onClick={handleGenieBreakdown} disabled={isLoadingAI || !mainTask.trim() || isListening}>
-              {isLoadingAI ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
-              Décomposer
+            <Button onClick={() => handleGenieBreakdown(mainTask, null)} disabled={isLoadingAI || !mainTask.trim() || isListening || (isLoadingAI && loadingAITaskId !== null)}>
+              {(isLoadingAI && loadingAITaskId === null) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+              Décomposer Tâche Principale
             </Button>
           </div>
         </div>
 
-        { (mainTask || subTasks.length > 0) && ( // Show sub-tasks section if main task entered OR subtasks exist
+        { (mainTask || subTasks.length > 0) && (
           <div>
             <h3 className="text-lg font-semibold mb-2 text-foreground">
-              {mainTask ? `Sous-tâches pour : "${mainTask}"` : "Liste des sous-tâches"}
+              {mainTask ? `Décomposition pour : "${mainTask}"` : "Liste des sous-tâches"}
             </h3>
             {subTasks.length === 0 && !isLoadingAI && (
-                <p className="text-muted-foreground italic">Aucune sous-tâche. Cliquez sur "Décomposer" ou ajoutez-en manuellement.</p>
+                <p className="text-muted-foreground italic">Aucune sous-tâche. Cliquez sur "Décomposer" ou ajoutez-en manuellement ci-dessous.</p>
             )}
-            {isLoadingAI && subTasks.length === 0 && (
+            {(isLoadingAI && loadingAITaskId === null && subTasks.length === 0) && (
                 <div className="flex items-center justify-center text-muted-foreground">
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin"/> Le Génie réfléchit...
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin"/> Le Génie décompose la tâche principale...
                 </div>
             )}
-            <ul className="space-y-2">
+            
+            {/* Render top-level tasks */}
+            <div className="space-y-1">
               {subTasks.map((task) => (
-                <li key={task.id} className="flex items-center gap-2 p-2 border rounded-md bg-background hover:bg-muted/50 transition-colors">
-                  <Button variant="ghost" size="icon" onClick={() => toggleSubTask(task.id)} aria-label={task.isCompleted ? "Marquer comme non terminée" : "Marquer comme terminée"}>
-                    {task.isCompleted ? <CheckSquare className="text-green-500" /> : <Square className="text-muted-foreground" />}
-                  </Button>
-                  <Input 
-                    value={task.text} 
-                    onChange={(e) => handleSubTaskTextChange(task.id, e.target.value)}
-                    className={`flex-grow bg-transparent border-0 focus:ring-0 ${task.isCompleted ? 'line-through text-muted-foreground' : ''}`}
-                    disabled={isLoadingAI}
-                  />
-                  <Button variant="ghost" size="icon" onClick={() => deleteSubTask(task.id)} aria-label="Supprimer la sous-tâche" disabled={isLoadingAI}>
-                    <Trash2 className="text-destructive w-4 h-4" />
-                  </Button>
-                </li>
+                <RenderTaskNode key={task.id} task={task} currentDepth={0} />
               ))}
-            </ul>
+            </div>
+
+            {/* Input for adding new direct sub-task to main task */}
             <div className="mt-4 flex gap-2">
               <Input 
-                value={newSubTaskText}
-                onChange={(e) => setNewSubTaskText(e.target.value)}
-                placeholder="Ajouter une sous-tâche manuellement"
+                value={newDirectSubTaskText}
+                onChange={(e) => setNewDirectSubTaskText(e.target.value)}
+                placeholder="Ajouter une sous-tâche manuellement à la tâche principale"
                 className="flex-grow"
-                onKeyPress={(e) => {if (e.key === 'Enter') handleAddSubTask();}}
+                onKeyPress={(e) => {if (e.key === 'Enter') handleAddManualSubTask(null);}}
                 disabled={isLoadingAI}
               />
-              <Button onClick={handleAddSubTask} variant="outline" disabled={isLoadingAI}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Ajouter
+              <Button onClick={() => handleAddManualSubTask(null)} variant="outline" disabled={isLoadingAI}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Ajouter à la tâche principale
               </Button>
             </div>
           </div>

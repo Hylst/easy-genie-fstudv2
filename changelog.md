@@ -43,16 +43,18 @@
     - Visual feedback for active microphone and loading states.
 - **Attribution**: Added "Geoffroy Streit" as creator in README and Footer.
 - **Standardized Development Guide**: Created `tool_coding_method.md`.
-- **TaskBreaker Tool AI Enhancement**:
+- **TaskBreaker Tool AI Enhancement & Recursive Breakdown**:
     - Implemented Genkit AI flow `breakdown-task-flow.ts` for "Décomposer" button to provide sub-task suggestions based on main task and intensity.
     - Updated `TaskBreakerTool` UI to call AI, display suggestions, and handle loading states.
     - Added voice input for the main task field.
     - Sub-tasks (AI-generated or manual) are saved to/loaded from localStorage.
+    - **Recursive Breakdown**: Implemented ability to break down any sub-task into further sub-sub-tasks, both manually and using AI. UI updated with indentation and controls for nested tasks. State management refactored to handle tree structure. LocalStorage updated to `TASK_BREAKER_STORAGE_KEY_SUBTASKS_v2` due to structure change.
 
 ## To Do
 
 - **TaskBreaker Tool Enhancements**:
-    - Consider voice input for adding/editing individual sub-tasks.
+    - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
+    - Refine UI for very deep nesting if it becomes an issue.
 - **RoutineBuilder Tool Enhancements (Phase 2)**:
     - Consider UI for reordering routines and steps.
     - Optional: Add specific time input for routines.
@@ -71,6 +73,6 @@
 - Store tool data for authenticated users (e.g., using Firestore).
 - Add tests (unit, integration).
 - Review and improve safety settings for Genkit flows.
-- **Voice Input**: Refine voice input for BrainDump, Formalizer, and TaskBreaker. Fully implement for PriorityGrid, and new tools where applicable.
+- **Voice Input**: Refine voice input for BrainDump, Formalizer. Fully implement for PriorityGrid, and new tools where applicable.
     
 ```
