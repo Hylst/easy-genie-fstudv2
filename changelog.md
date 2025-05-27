@@ -6,7 +6,7 @@
 - Initial project setup (NextJS, ShadCN, Tailwind, Genkit).
 - Basic layout (Header, Footer).
 - Homepage with Hero and ToolGrid.
-- Tool pages: TaskBreaker, TimeFocus, PriorityGrid, BrainDump with client-side logic and IntensitySelector.
+- Tool pages: TaskBreaker (basic client-side), TimeFocus, PriorityGrid, BrainDump (basic client-side logic and IntensitySelector).
 - Contact page (mock submission).
 - Legal pages (Privacy, Terms).
 - Sparks page (placeholder).
@@ -41,15 +41,24 @@
         - New step text for each routine.
     - Added dialog to capture user's goal for AI routine suggestion.
     - Visual feedback for active microphone and loading states.
+- **Attribution**: Added "Geoffroy Streit" as creator in README and Footer.
+- **Standardized Development Guide**: Created `tool_coding_method.md`.
+- **TaskBreaker Tool AI Enhancement**:
+    - Implemented Genkit AI flow `breakdown-task-flow.ts` for "Décomposer" button to provide sub-task suggestions based on main task and intensity.
+    - Updated `TaskBreakerTool` UI to call AI, display suggestions, and handle loading states.
+    - Added voice input for the main task field.
+    - Sub-tasks (AI-generated or manual) are saved to/loaded from localStorage.
 
 ## To Do
 
+- **TaskBreaker Tool Enhancements**:
+    - Consider voice input for adding/editing individual sub-tasks.
 - **RoutineBuilder Tool Enhancements (Phase 2)**:
     - Consider UI for reordering routines and steps.
     - Optional: Add specific time input for routines.
     - Optional: Interactive execution mode (checking off steps as done for a specific day).
     - Refine voice input for editing existing step text (currently only appends).
-- Integrate Genkit AI more deeply into other existing tools (TaskBreaker suggestions, TimeFocus modes, PriorityGrid classification help) to make the "magic level" (intensity) impact their behavior.
+- Integrate Genkit AI more deeply into other existing tools (TimeFocus modes, PriorityGrid classification help) to make the "magic level" (intensity) impact their behavior.
 - Implement remaining tools from `tool-grid.tsx` with their specific functionalities and intensity level integrations:
     - DecisionHelper (placeholder page exists)
     - MoodTracker (placeholder page exists)
@@ -62,5 +71,6 @@
 - Store tool data for authenticated users (e.g., using Firestore).
 - Add tests (unit, integration).
 - Review and improve safety settings for Genkit flows.
-- **Voice Input**: Refine voice input for BrainDump and Formalizer. Fully implement for TaskBreaker, PriorityGrid, and new tools where applicable.
+- **Voice Input**: Refine voice input for BrainDump, Formalizer, and TaskBreaker. Fully implement for PriorityGrid, and new tools where applicable.
     
+```
