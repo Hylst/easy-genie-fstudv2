@@ -20,7 +20,7 @@
     - Implemented `analyze-brain-dump-flow.ts` Genkit flow that varies analysis based on intensity level.
     - Added display area for AI analysis results.
     - Implemented loading state for AI analysis.
-    - Added voice input (speech-to-text) functionality with a microphone button next to the textarea, using Web Speech API.
+    *   Added voice input (speech-to-text) functionality with a microphone button next to the textarea, using Web Speech API.
     - Updated save/download to include AI analysis if present.
 - **RoutineBuilder Tool Initial Implementation**:
     - Enabled in ToolGrid with `CalendarCheck` icon and `genie planner` hint.
@@ -75,13 +75,17 @@
     - Added placeholder `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to `.env`.
     - Added a placeholder "Hors ligne / Online" toggle button to the header (currently non-functional, shows a toast).
     - Detailed plan for IndexedDB and Supabase integration outlined.
+- **Database Integration (Phase 0 Continued)**:
+    - Removed "Outils (Lampe)" and "Étincelles" navigation buttons from header.
+    - Updated `.env` with actual Supabase project URL and anon key.
+    - Created `src/lib/supabaseClient.ts` to initialize and export the Supabase client.
+    - Provided `supabase_schema.sql` for user to set up tables (brain_dumps, routines, routine_steps, task_breaker_tasks, priority_tasks) and RLS policies in their Supabase project.
 
 ## To Do
 
 - **Database & Sync Implementation (High Priority)**:
-    - **Phase 0 (Continue)**:
-        - User to set up Supabase project (tables, RLS policies for data ownership).
-        - Create `src/lib/supabaseClient.ts` to initialize and export the Supabase client.
+    - **Phase 0 (User Action Required)**:
+        - **User to execute `supabase_schema.sql` in their Supabase project SQL Editor to create tables and RLS policies.**
     - **Phase 1: User Authentication (Supabase)**
         - Implement Sign Up, Log In, Log Out UI and logic.
         - Create `AuthContext` for session management (listen to `onAuthStateChange`).
@@ -112,18 +116,17 @@
 - **RoutineBuilder Tool Enhancements (Phase 2)**:
     - Consider UI for reordering routines and steps.
     - Optional: Add specific time input for routines.
-    - Optional: Interactive execution mode (checking off steps as done for a specific day).
+    *   Optional: Interactive execution mode (checking off steps as done for a specific day).
     - Refine voice input for editing existing step text (currently only appends).
 - Integrate Genkit AI more deeply into other existing tools (TimeFocus modes) to make the "magic level" (intensity) impact their behavior.
 - Implement remaining tools from `tool-grid.tsx` with their specific functionalities and intensity level integrations:
     - DecisionHelper (placeholder page exists)
     - MoodTracker (placeholder page exists)
     - FocusMode (placeholder page exists)
-- Flesh out "Étincelles" (Sparks) page content and ensure the link in the header works as expected.
+- Flesh out "Étincelles" (Sparks) page content (or remove link if page is not planned).
 - Implement actual email sending for contact form.
 - Refine UI/UX across all tools, including responsive design, accessibility, loading states, and error handling for new features.
 - Add relevant image placeholders with `data-ai-hint` to all newly developed tool pages where appropriate.
 - Add tests (unit, integration).
 - Review and improve safety settings for Genkit flows.
 - **Voice Input**: Refine voice input for BrainDump, Formalizer. Fully implement for new tools where applicable.
-

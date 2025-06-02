@@ -4,17 +4,18 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Menu, Sparkles, Wifi, WifiOff } from 'lucide-react';
+import { Menu, Wifi, WifiOff } from 'lucide-react';
 import { GenieLampIcon } from '@/components/icons/logo-icon';
 import { useState } from 'react';
 import { useToast } from "@/hooks/use-toast";
 
 export function MagicHeader() {
   const { toast } = useToast();
-  const navItems = [
-    { name: 'Outils (Lampe)', href: '/' },
-    { name: 'Étincelles', href: '/sparks' },
-  ];
+  // Nav items removed as per request
+  // const navItems = [
+  //   { name: 'Outils (Lampe)', href: '/' },
+  //   { name: 'Étincelles', href: '/sparks' },
+  // ];
 
   const [isOnline, setIsOnline] = useState(true); 
   
@@ -37,14 +38,14 @@ export function MagicHeader() {
         </Link>
         
         <nav className="hidden md:flex items-center space-x-4 text-sm font-medium">
-          {navItems.map((item) => (
+          {/* {navItems.map((item) => (
             <Link
               key={item.name}
               href={item.href}
               className="transition-colors hover:text-primary"
             >
               {item.name}
-            </Link>))}
+            </Link>))} */}
           
           <Button 
             variant="outline" 
@@ -78,14 +79,18 @@ export function MagicHeader() {
             </SheetTrigger>
             <SheetContent side="right">
               <nav className="flex flex-col space-y-4 pt-6">
-                {navItems.map((item) => (
+                {/* Mobile nav items removed as corresponding desktop items were removed */}
+                {/* {navItems.map((item) => (
                 <Link
                   key={item.name}
                   href={item.href}
                   className="text-lg font-medium transition-colors hover:text-primary"
                 >
                   {item.name}
-                </Link>))}
+                </Link>))} */}
+                 <p className="text-muted-foreground text-center p-4">
+                   Navigation principale simplifiée. Accédez aux outils via la page d'accueil.
+                 </p>
               </nav>
             </SheetContent>
           </Sheet>
