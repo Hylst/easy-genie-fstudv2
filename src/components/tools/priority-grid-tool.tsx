@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useState, type FormEvent, useEffect } from 'react';
+import { useState, type FormEvent, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
-import { Trash2, PlusCircle, Edit, CalendarIcon, Clock, ChevronDown, ChevronUp, Info, WandSparkles, Save } from 'lucide-react';
+import { Trash2, PlusCircle, Edit, CalendarIcon, Clock, ChevronDown, ChevronUp, Info, WandSparkles, Save, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -26,9 +26,16 @@ import {
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import type { PriorityTask, CreatePriorityTaskDTO, Frequency } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  getAllPriorityTasks,
+  addPriorityTask,
+  updatePriorityTask,
+  deletePriorityTask,
+} from '@/services/appDataService';
 
 
-type Frequency = "once" | "daily" | "weekly" | "bi-weekly" | "monthly" | "yearly";
 const frequencies: { value: Frequency, label: string, description: string }[] = [
   { value: "once", label: "Une fois", description: "Tâche unique, non récurrente." },
   { value: "daily", label: "Journalier", description: "Se répète tous les jours." },
@@ -38,17 +45,8 @@ const frequencies: { value: Frequency, label: string, description: string }[] = 
   { value: "yearly", label: "Annuel", description: "Se répète chaque année." },
 ];
 
-interface PriorityTask {
-  id: string;
-  text: string;
-  quadrant: 'urgentImportant' | 'notUrgentImportant' | 'urgentNotImportant' | 'notUrgentNotImportant';
-  frequency?: Frequency;
-  specificDate?: string; // ISO string
-  specificTime?: string; // HH:mm
-}
-
 type QuadrantKey = PriorityTask['quadrant'];
-const PRIORITY_GRID_STORAGE_KEY_TASKS = "easyGeniePriorityGridTasks_v1";
+// const PRIORITY_GRID_STORAGE_KEY_TASKS = "easyGeniePriorityGridTasks_v1"; // No longer used for tasks
 const PRIORITY_GRID_CUSTOM_PRESETS_KEY = "easyGeniePriorityGridCustomPresets_v1";
 
 
@@ -128,7 +126,10 @@ const hardcodedPresets: PresetCategory[] = [
 export function PriorityGridTool() {
   const [intensity, setIntensity] = useState<number>(3);
   const [tasks, setTasks] = useState<PriorityTask[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { user, isOnline } = useAuth();
 
   // State for new task form
   const [newTaskText, setNewTaskText] = useState<string>('');
@@ -155,20 +156,34 @@ export function PriorityGridTool() {
   const [showEditTaskAdvanced, setShowEditTaskAdvanced] = useState(false);
 
 
-  useEffect(() => {
-    const savedTasks = localStorage.getItem(PRIORITY_GRID_STORAGE_KEY_TASKS);
-    if (savedTasks) {
-      try {
-        setTasks(JSON.parse(savedTasks));
-      } catch (error) {
-        console.error("Failed to parse tasks from localStorage", error);
-        toast({ title: "Erreur de chargement des tâches", description: "Impossible de charger les tâches sauvegardées.", variant: "destructive"});
-      }
+  const fetchTasks = useCallback(async () => {
+    if (!user) {
+      setTasks([]);
+      setIsLoadingTasks(false);
+      return;
     }
-    loadCustomPresets();
-  }, [toast]);
+    setIsLoadingTasks(true);
+    try {
+      const fetchedTasks = await getAllPriorityTasks();
+      setTasks(fetchedTasks);
+    } catch (error) {
+      console.error("Error fetching priority tasks:", error);
+      toast({
+        title: "Erreur de chargement des tâches",
+        description: (error as Error).message || "Impossible de récupérer les tâches de la base de données.",
+        variant: "destructive",
+      });
+      setTasks([]);
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, [user, toast]);
 
-  const loadCustomPresets = () => {
+  useEffect(() => {
+    fetchTasks();
+  }, [user, isOnline, fetchTasks]); // Re-fetch if user, online status, or fetchTasks callback changes
+
+  const loadCustomPresets = useCallback(() => {
     const savedCustomPresets = localStorage.getItem(PRIORITY_GRID_CUSTOM_PRESETS_KEY);
     if (savedCustomPresets) {
       try {
@@ -178,12 +193,12 @@ export function PriorityGridTool() {
         toast({ title: "Erreur de chargement des presets personnalisés", description: "Impossible de charger vos presets.", variant: "destructive"});
       }
     }
-  };
+  }, [toast]);
 
-  const saveTasksToLocalStorage = (updatedTasks: PriorityTask[]) => {
-    setTasks(updatedTasks);
-    localStorage.setItem(PRIORITY_GRID_STORAGE_KEY_TASKS, JSON.stringify(updatedTasks));
-  };
+  useEffect(() => {
+    loadCustomPresets();
+  }, [loadCustomPresets]);
+
 
   const saveCustomPresetsToLocalStorage = (updatedCustomPresets: Preset[]) => {
     setCustomPresets(updatedCustomPresets);
@@ -199,30 +214,51 @@ export function PriorityGridTool() {
     setShowNewTaskAdvanced(false);
   };
 
-  const handleAddTask = (e: FormEvent) => {
+  const handleAddTask = async (e: FormEvent) => {
     e.preventDefault();
+    if (!user) {
+        toast({ title: "Non connecté", description: "Veuillez vous connecter pour ajouter des tâches.", variant: "destructive"});
+        return;
+    }
     if (!newTaskText.trim()) {
       toast({ title: "Texte de tâche manquant", description: "Veuillez entrer une description pour votre tâche.", variant: "destructive"});
       return;
     }
-
-    const newTaskData: PriorityTask = {
-      id: crypto.randomUUID(),
-      text: newTaskText,
-      quadrant: selectedQuadrant,
-      frequency: newFrequency === "once" ? undefined : newFrequency,
-      specificDate: newSpecificDate ? newSpecificDate.toISOString() : undefined,
-      specificTime: newSpecificTime || undefined,
-    };
-    saveTasksToLocalStorage([...tasks, newTaskData]);
-    toast({ title: "Tâche ajoutée!", description: `"${newTaskText}" a été ajoutée à la grille.` });
-    resetNewTaskForm();
+    setIsSubmitting(true);
+    try {
+      const taskDto: CreatePriorityTaskDTO = {
+        text: newTaskText,
+        quadrant: selectedQuadrant,
+        frequency: newFrequency === "once" ? undefined : newFrequency,
+        specificDate: newSpecificDate ? newSpecificDate.toISOString().split('T')[0] : undefined, // Ensure only date part for DB
+        specificTime: newSpecificTime || undefined,
+        isCompleted: false, // Default for new tasks
+      };
+      const addedTask = await addPriorityTask(taskDto);
+      setTasks(prevTasks => [...prevTasks, addedTask]);
+      toast({ title: "Tâche ajoutée!", description: `"${newTaskText}" a été ajoutée.` });
+      resetNewTaskForm();
+    } catch (error) {
+      console.error("Error adding task:", error);
+      toast({ title: "Erreur d'ajout", description: (error as Error).message || "Impossible d'ajouter la tâche.", variant: "destructive"});
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDeleteTask = (id: string) => {
-    const newTasks = tasks.filter(task => task.id !== id);
-    saveTasksToLocalStorage(newTasks);
-    toast({ title: "Tâche supprimée", variant: "destructive" });
+  const handleDeleteTask = async (id: string) => {
+    if (!user) return;
+    setIsSubmitting(true); // Consider a specific deleting state if needed
+    try {
+      await deletePriorityTask(id);
+      setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
+      toast({ title: "Tâche supprimée", variant: "destructive" });
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      toast({ title: "Erreur de suppression", description: (error as Error).message || "Impossible de supprimer la tâche.", variant: "destructive"});
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const openEditDialog = (task: PriorityTask) => {
@@ -235,26 +271,48 @@ export function PriorityGridTool() {
     setShowEditTaskAdvanced(!!(task.frequency || task.specificDate || task.specificTime));
   };
 
-  const handleUpdateTask = () => {
-    if (!editingTask || !editText.trim()) {
-      toast({ title: "Texte de tâche manquant", description: "La description ne peut être vide.", variant: "destructive"});
+  const handleUpdateTask = async () => {
+    if (!user || !editingTask || !editText.trim()) {
+      toast({ title: "Informations manquantes", description: "Impossible de mettre à jour la tâche.", variant: "destructive"});
       return;
     }
-    const updatedTasks = tasks.map(t => 
-      t.id === editingTask.id 
-      ? { 
-          ...t, 
-          text: editText,
-          quadrant: editQuadrant,
-          frequency: editFrequency === "once" ? undefined : editFrequency,
-          specificDate: editSpecificDate ? editSpecificDate.toISOString() : undefined,
-          specificTime: editSpecificTime || undefined,
-        } 
-      : t
-    );
-    saveTasksToLocalStorage(updatedTasks);
-    toast({ title: "Tâche mise à jour!" });
-    setEditingTask(null); 
+    setIsSubmitting(true);
+    try {
+      const taskUpdateDto: Partial<CreatePriorityTaskDTO> = {
+        text: editText,
+        quadrant: editQuadrant,
+        frequency: editFrequency === "once" ? undefined : editFrequency,
+        specificDate: editSpecificDate ? editSpecificDate.toISOString().split('T')[0] : undefined,
+        specificTime: editSpecificTime || undefined,
+        // isCompleted will be part of taskUpdateDto if changed via a checkbox
+        // For now, assuming completion is toggled directly on the card.
+        // If completion is part of edit dialog, include: isCompleted: editingTask.isCompleted 
+      };
+      const updated = await updatePriorityTask(editingTask.id, taskUpdateDto);
+      setTasks(prevTasks => prevTasks.map(t => t.id === editingTask.id ? updated : t));
+      toast({ title: "Tâche mise à jour!" });
+      setEditingTask(null); 
+    } catch (error) {
+      console.error("Error updating task:", error);
+      toast({ title: "Erreur de mise à jour", description: (error as Error).message || "Impossible de mettre à jour la tâche.", variant: "destructive"});
+    } finally {
+        setIsSubmitting(false);
+    }
+  };
+
+  const handleToggleComplete = async (task: PriorityTask) => {
+    if (!user) return;
+    setIsSubmitting(true);
+    try {
+      const updated = await updatePriorityTask(task.id, { isCompleted: !task.isCompleted });
+      setTasks(prevTasks => prevTasks.map(t => t.id === task.id ? updated : t));
+      toast({ title: task.isCompleted ? "Tâche marquée non faite" : "Tâche complétée !" });
+    } catch (error) {
+      console.error("Error toggling task completion:", error);
+      toast({ title: "Erreur", description: (error as Error).message || "Impossible de modifier l'état de la tâche.", variant: "destructive"});
+    } finally {
+        setIsSubmitting(false);
+    }
   };
   
   const loadPresetIntoForm = (preset: Preset) => {
@@ -270,7 +328,13 @@ export function PriorityGridTool() {
       setNewSpecificDate(tomorrow);
     } else if (preset.specificDate) {
        try {
-        setNewSpecificDate(new Date(preset.specificDate));
+        // Ensure date string is valid for Date constructor (e.g., YYYY-MM-DD)
+        const dateParts = preset.specificDate.split('-');
+        if (dateParts.length === 3) {
+            setNewSpecificDate(new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2])));
+        } else {
+            setNewSpecificDate(new Date(preset.specificDate)); // Fallback
+        }
        } catch (e) {
         setNewSpecificDate(undefined); 
        }
@@ -301,7 +365,7 @@ export function PriorityGridTool() {
       toast({ title: "Nom de preset manquant", description: "Veuillez donner un nom à votre preset.", variant: "destructive"});
       return;
     }
-    if (!newTaskText.trim()) { // Should be caught by button disable, but double check
+    if (!newTaskText.trim()) {
         toast({ title: "Description de tâche vide", description: "La tâche à sauvegarder est vide.", variant: "destructive"});
         return;
     }
@@ -312,7 +376,7 @@ export function PriorityGridTool() {
       text: newTaskText,
       quadrant: selectedQuadrant,
       frequency: newFrequency === "once" ? undefined : newFrequency,
-      specificDate: newSpecificDate ? newSpecificDate.toISOString() : undefined,
+      specificDate: newSpecificDate ? newSpecificDate.toISOString().split('T')[0] : undefined,
       specificTime: newSpecificTime || undefined,
     };
     saveCustomPresetsToLocalStorage([...customPresets, newCustomPreset]);
@@ -338,7 +402,9 @@ export function PriorityGridTool() {
   const formatDate = (dateString?: string) => {
     if (!dateString) return '';
     try {
-      return format(new Date(dateString), "dd/MM/yyyy", { locale: fr });
+      // Supabase stores DATE as YYYY-MM-DD. We need to ensure client doesn't misinterpret timezone.
+      // Adding time part 'T00:00:00' to make it explicit UTC date for parsing, then format.
+      return format(new Date(`${dateString}T00:00:00`), "dd/MM/yyyy", { locale: fr });
     } catch (e) {
       return "Date invalide";
     }
@@ -353,15 +419,26 @@ export function PriorityGridTool() {
     <div className={`p-4 rounded-lg shadow-inner min-h-[200px] ${bgColor} flex flex-col`}>
       <h3 className="font-semibold text-lg mb-3 text-foreground">{title}</h3>
       <div className="space-y-2 flex-grow">
-        {tasks.filter(task => task.quadrant === quadrantKey).map(task => (
-          <div key={task.id} className="bg-background/80 p-3 rounded-md shadow-sm hover:shadow-md transition-shadow">
+        {isLoadingTasks && <div className="flex justify-center items-center h-full"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>}
+        {!isLoadingTasks && tasks.filter(task => task.quadrant === quadrantKey).map(task => (
+          <div key={task.id} className={`bg-background/80 p-3 rounded-md shadow-sm hover:shadow-md transition-shadow ${task.isCompleted ? 'opacity-60' : ''}`}>
             <div className="flex justify-between items-start">
-              <p className="text-sm text-foreground flex-grow break-words mr-2">{task.text}</p>
+              <div className="flex items-center flex-grow mr-2">
+                 <Checkbox 
+                    id={`task-${task.id}`} 
+                    checked={task.isCompleted} 
+                    onCheckedChange={() => handleToggleComplete(task)}
+                    className="mr-2 flex-shrink-0"
+                    disabled={isSubmitting || !user}
+                    aria-label={`Marquer la tâche ${task.text} comme ${task.isCompleted ? 'non complétée' : 'complétée'}`}
+                  />
+                <p className={`text-sm text-foreground break-words ${task.isCompleted ? 'line-through' : ''}`}>{task.text}</p>
+              </div>
               <div className="flex-shrink-0 flex gap-1">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(task)} aria-label="Modifier la tâche" className="h-7 w-7">
+                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(task)} aria-label="Modifier la tâche" className="h-7 w-7" disabled={isSubmitting || !user}>
                         <Edit className="w-4 h-4 text-blue-500" />
                       </Button>
                     </TooltipTrigger>
@@ -371,7 +448,7 @@ export function PriorityGridTool() {
                  <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" onClick={() => handleDeleteTask(task.id)} aria-label="Supprimer la tâche" className="h-7 w-7">
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteTask(task.id)} aria-label="Supprimer la tâche" className="h-7 w-7" disabled={isSubmitting || !user}>
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
                     </TooltipTrigger>
@@ -390,8 +467,11 @@ export function PriorityGridTool() {
           </div>
         ))}
       </div>
-      {tasks.filter(task => task.quadrant === quadrantKey).length === 0 && (
+      {!isLoadingTasks && tasks.filter(task => task.quadrant === quadrantKey).length === 0 && (
         <p className="text-sm text-muted-foreground italic mt-auto">Aucune tâche ici.</p>
+      )}
+       {!isLoadingTasks && !user && (
+        <p className="text-sm text-muted-foreground italic mt-auto">Connectez-vous pour voir vos tâches.</p>
       )}
     </div>
   );
@@ -401,14 +481,15 @@ export function PriorityGridTool() {
       <Card className="w-full max-w-5xl mx-auto shadow-xl">
         <CardHeader>
           <CardTitle className="text-3xl font-bold text-primary">PriorityGrid Magique</CardTitle>
-          <CardDescription>Organisez vos tâches avec la matrice d'Eisenhower. Le niveau de magie influencera les futures suggestions du Génie !</CardDescription>
+          <CardDescription>Organisez vos tâches avec la matrice d'Eisenhower. {isOnline ? "Connecté au serveur." : "Mode hors ligne."} {user ? `Utilisateur: ${user.email}` : "Non connecté."}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <IntensitySelector value={intensity} onChange={setIntensity} />
           
           <Card className="p-4 sm:p-6 bg-card shadow-md">
             <CardTitle className="text-xl mb-1 text-primary">Ajouter une Tâche</CardTitle>
-            <CardDescription className="mb-4">Remplissez les détails de votre nouvelle tâche. Les champs marqués d'un * sont requis.</CardDescription>
+            {!user && <CardDescription className="mb-4 text-destructive">Veuillez vous connecter pour ajouter et gérer vos tâches.</CardDescription>}
+            {user && <CardDescription className="mb-4">Remplissez les détails de votre nouvelle tâche. Les champs marqués d'un * sont requis.</CardDescription>}
             <form onSubmit={handleAddTask} className="space-y-4">
               <div>
                 <Label htmlFor="new-task-text">Description de la tâche <span className="text-destructive">*</span></Label>
@@ -419,6 +500,7 @@ export function PriorityGridTool() {
                   placeholder="Ex: Répondre aux e-mails importants"
                   className="w-full mt-1"
                   required
+                  disabled={!user || isSubmitting}
                 />
               </div>
 
@@ -437,7 +519,7 @@ export function PriorityGridTool() {
                       </TooltipContent>
                     </Tooltip>
                   </Label>
-                  <Select value={selectedQuadrant} onValueChange={(value) => setSelectedQuadrant(value as QuadrantKey)} required>
+                  <Select value={selectedQuadrant} onValueChange={(value) => setSelectedQuadrant(value as QuadrantKey)} required disabled={!user || isSubmitting}>
                       <SelectTrigger id="new-task-quadrant" className="w-full mt-1">
                           <SelectValue placeholder="Choisir quadrant" />
                       </SelectTrigger>
@@ -455,6 +537,7 @@ export function PriorityGridTool() {
                 variant="link" 
                 onClick={() => setShowNewTaskAdvanced(!showNewTaskAdvanced)} 
                 className="p-0 h-auto text-sm"
+                disabled={!user || isSubmitting}
               >
                 {showNewTaskAdvanced ? <ChevronUp className="mr-1 h-4 w-4"/> : <ChevronDown className="mr-1 h-4 w-4"/>}
                 Options avancées (fréquence, date, heure)
@@ -473,7 +556,7 @@ export function PriorityGridTool() {
                             <TooltipContent side="right"><p>À quelle fréquence cette tâche se répète-t-elle ? Choisissez "Une fois" si non récurrente.</p></TooltipContent>
                           </Tooltip>
                         </Label>
-                        <Select value={newFrequency || "once"} onValueChange={(value) => setNewFrequency(value as Frequency)}>
+                        <Select value={newFrequency || "once"} onValueChange={(value) => setNewFrequency(value as Frequency)} disabled={!user || isSubmitting}>
                             <SelectTrigger id="new-task-frequency" className="w-full mt-1">
                                 <SelectValue placeholder="Choisir fréquence (optionnel)" />
                             </SelectTrigger>
@@ -492,6 +575,7 @@ export function PriorityGridTool() {
                             variant={"outline"}
                             className="w-full justify-start text-left font-normal mt-1"
                             id="new-task-date"
+                            disabled={!user || isSubmitting}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
                             {newSpecificDate ? format(newSpecificDate, "PPP", { locale: fr }) : <span>Choisir une date</span>}
@@ -504,6 +588,7 @@ export function PriorityGridTool() {
                             onSelect={setNewSpecificDate}
                             initialFocus
                             locale={fr}
+                            disabled={!user || isSubmitting}
                           />
                         </PopoverContent>
                       </Popover>
@@ -516,6 +601,7 @@ export function PriorityGridTool() {
                         value={newSpecificTime}
                         onChange={(e) => setNewSpecificTime(e.target.value)}
                         className="w-full mt-1"
+                        disabled={!user || isSubmitting}
                       />
                     </div>
                   </div>
@@ -523,17 +609,18 @@ export function PriorityGridTool() {
               )}
               
               <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
-                <Button type="submit" className="w-full sm:w-auto">
-                  <PlusCircle className="mr-2 h-4 w-4" /> Ajouter la Tâche
+                <Button type="submit" className="w-full sm:w-auto" disabled={!user || isSubmitting}>
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
+                  {isSubmitting ? "Ajout..." : "Ajouter la Tâche"}
                 </Button>
                 
                 <div className="flex gap-2 w-full sm:w-auto">
-                  <Button type="button" variant="outline" className="flex-1 sm:flex-none" onClick={handleOpenSavePresetDialog} disabled={!newTaskText.trim()}>
+                  <Button type="button" variant="outline" className="flex-1 sm:flex-none" onClick={handleOpenSavePresetDialog} disabled={!user || !newTaskText.trim() || isSubmitting}>
                     <Save className="mr-2 h-4 w-4" /> Sauvegarder comme Preset
                   </Button>
                   <Dialog open={isPresetDialogOpen} onOpenChange={setIsPresetDialogOpen}>
                     <DialogTrigger asChild>
-                      <Button type="button" variant="outline" className="flex-1 sm:flex-none">
+                      <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={!user || isSubmitting}>
                         <WandSparkles className="mr-2 h-4 w-4" /> Charger un Preset
                       </Button>
                     </DialogTrigger>
@@ -595,7 +682,7 @@ export function PriorityGridTool() {
         </CardContent>
         <CardFooter>
           <p className="text-xs text-muted-foreground text-center w-full">
-            Conseil du Génie : Prioriser avec sagesse est la clé du succès. Vos tâches sont sauvegardées localement.
+            Conseil du Génie : Prioriser avec sagesse est la clé du succès.
           </p>
         </CardFooter>
       </Card>
@@ -619,6 +706,7 @@ export function PriorityGridTool() {
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 required
+                disabled={isSubmitting}
               />
             </div>
             <div className="space-y-1">
@@ -636,7 +724,7 @@ export function PriorityGridTool() {
                   </TooltipContent>
                 </Tooltip>
               </Label>
-              <Select value={editQuadrant} onValueChange={(value) => setEditQuadrant(value as QuadrantKey)} required>
+              <Select value={editQuadrant} onValueChange={(value) => setEditQuadrant(value as QuadrantKey)} required disabled={isSubmitting}>
                 <SelectTrigger id="edit-task-quadrant">
                   <SelectValue placeholder="Choisir quadrant" />
                 </SelectTrigger>
@@ -654,6 +742,7 @@ export function PriorityGridTool() {
                 variant="link" 
                 onClick={() => setShowEditTaskAdvanced(!showEditTaskAdvanced)} 
                 className="p-0 h-auto text-sm justify-start mt-2"
+                disabled={isSubmitting}
               >
                 {showEditTaskAdvanced ? <ChevronUp className="mr-1 h-4 w-4"/> : <ChevronDown className="mr-1 h-4 w-4"/>}
                 Options avancées
@@ -663,7 +752,7 @@ export function PriorityGridTool() {
                <div className="space-y-4 p-4 border rounded-md bg-background/50 mt-1">
                  <div className="space-y-1">
                     <Label htmlFor="edit-task-frequency">Fréquence</Label>
-                    <Select value={editFrequency || "once"} onValueChange={(value) => setEditFrequency(value as Frequency)}>
+                    <Select value={editFrequency || "once"} onValueChange={(value) => setEditFrequency(value as Frequency)} disabled={isSubmitting}>
                         <SelectTrigger id="edit-task-frequency">
                             <SelectValue placeholder="Choisir fréquence" />
                         </SelectTrigger>
@@ -680,6 +769,7 @@ export function PriorityGridTool() {
                           variant={"outline"}
                           className="w-full justify-start text-left font-normal"
                           id="edit-task-date"
+                          disabled={isSubmitting}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {editSpecificDate ? format(editSpecificDate, "PPP", { locale: fr }) : <span>Choisir date</span>}
@@ -692,6 +782,7 @@ export function PriorityGridTool() {
                           onSelect={(date) => setEditSpecificDate(date)}
                           initialFocus
                           locale={fr}
+                          disabled={isSubmitting}
                         />
                       </PopoverContent>
                     </Popover>
@@ -703,6 +794,7 @@ export function PriorityGridTool() {
                       type="time"
                       value={editSpecificTime}
                       onChange={(e) => setEditSpecificTime(e.target.value)}
+                      disabled={isSubmitting}
                     />
                   </div>
                </div>
@@ -710,9 +802,12 @@ export function PriorityGridTool() {
           </div>
           <DialogFooter>
             <DialogClose asChild>
-                <Button type="button" variant="outline">Annuler</Button>
+                <Button type="button" variant="outline" disabled={isSubmitting}>Annuler</Button>
             </DialogClose>
-            <Button type="button" onClick={handleUpdateTask}>Sauvegarder les Changements</Button>
+            <Button type="button" onClick={handleUpdateTask} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+              {isSubmitting ? "Sauvegarde..." : "Sauvegarder"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -754,11 +849,4 @@ export function PriorityGridTool() {
               Sauvegarder le Preset
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-    </TooltipProvider>
-  );
-}
-
-    
+        </

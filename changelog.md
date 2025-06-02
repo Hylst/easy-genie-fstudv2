@@ -109,13 +109,15 @@
         - `BrainDumpSupabaseService` (`src/services/supabase/brain-dump.supabase.service.ts`) with full CRUD for brain dumps.
         - `TaskBreakerSupabaseService` (`src/services/supabase/task-breaker.supabase.service.ts`) with full CRUD for tasks.
     - Expanded `AppDataService` (`src/services/appDataService.ts`) to include methods for `RoutineService`, `BrainDumpService`, and `TaskBreakerService`, routing calls to the appropriate local or remote service based on online status and user ID.
+- **Database Integration (Phase 3: Integrate PriorityGrid with New Data Layer)**
+    - Refactored `PriorityGridTool` to use `AppDataService.getAllPriorityTasks()`, `AppDataService.addPriorityTask()`, etc., instead of `localStorage`.
+    - The "Hors ligne / Online" toggle in `MagicHeader` (managed via `AuthContext`) now effectively switches data sources for `PriorityGridTool` (IndexedDB or Supabase) via `AppDataService`.
+    - Implemented loading states and error handling for data operations in `PriorityGridTool`.
+    - Ensured task manipulation UI (add, edit, delete, complete) is disabled if no user is logged in.
 
 ## To Do
 
 - **Database & Sync Implementation (High Priority)**:
-    - **Phase 3: Integrate PriorityGrid with New Data Layer**
-        - Refactor `PriorityGridTool` to use `AppDataService.getAllPriorityTasks()`, `AppDataService.addPriorityTask()`, etc., instead of `localStorage`.
-        - Make "Hors ligne / Online" toggle fully functional within PriorityGrid, influencing `AppDataService` mode and data source visibility/behavior.
     - **Phase 4: Synchronization Logic**
         *   Implement logic for tracking local changes (dirty checking or pending sync log in IndexedDB when an online operation fails or when offline).
         *   Implement initial sync (on login/switch to online): upload local changes, download remote changes, implement conflict resolution strategy (e.g., last write wins based on `updated_at`, or server/client priority).
@@ -127,6 +129,7 @@
     - Implement a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
     - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
+    - Consider migrating custom preset storage from `localStorage` to the database.
 - **TaskBreaker Tool Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
@@ -149,3 +152,4 @@
 - **Email Confirmation**: Ensure "Confirm email" is enabled in Supabase project settings for production.
 - **Password Reset**: Implement a "Forgot Password" flow using Supabase's `sendPasswordResetEmail` and a page to handle the password update.
 
+```
