@@ -88,7 +88,7 @@
         - "Connexion" and "Inscription" links when logged out.
         - User avatar (initials), email (desktop), and "Déconnexion" button when logged in.
         - Loading skeletons during auth state determination.
-    - The "Hors ligne / Online" button is now visually disabled if no user is logged in, and toggles a global state.
+    - The "Hors ligne / Online" button is now visually disabled if no user is logged in, and toggles a global state managed via `AuthContext` and `AppDataService`.
 - **Database Integration (Phase 2: Abstract Data Layer & Services - PriorityTask)**:
     - Installed `dexie` library for IndexedDB management.
     - Updated `src/types/index.ts` with comprehensive data models including `id`, `user_id`, `created_at`, `updated_at` and DTOs for creation. Ensured `PriorityTask` includes `isCompleted`.
@@ -110,8 +110,9 @@
         - `TaskBreakerSupabaseService` (`src/services/supabase/task-breaker.supabase.service.ts`) with full CRUD for tasks.
     - Expanded `AppDataService` (`src/services/appDataService.ts`) to include methods for `RoutineService`, `BrainDumpService`, and `TaskBreakerService`, routing calls to the appropriate local or remote service based on online status and user ID.
 - **Database Integration (Phase 3: Integrate PriorityGrid with New Data Layer)**
-    - Refactored `PriorityGridTool` to use `AppDataService.getAllPriorityTasks()`, `AppDataService.addPriorityTask()`, etc., instead of `localStorage`.
-    - The "Hors ligne / Online" toggle in `MagicHeader` (managed via `AuthContext`) now effectively switches data sources for `PriorityGridTool` (IndexedDB or Supabase) via `AppDataService`.
+    - Refactored `PriorityGridTool` to use `AppDataService.getAllPriorityTasks()`, `AppDataService.addPriorityTask()`, etc., instead of `localStorage` for task data.
+    - Used ShadCN `Checkbox` component for task completion in `PriorityGridTool`.
+    - The "Hors ligne / Online" toggle in `MagicHeader` (managed via `AuthContext`) now effectively switches data sources for `PriorityGridTool` (IndexedDB or Supabase) via `AppDataService`, triggering data re-fetch.
     - Implemented loading states and error handling for data operations in `PriorityGridTool`.
     - Ensured task manipulation UI (add, edit, delete, complete) is disabled if no user is logged in.
 
@@ -153,3 +154,4 @@
 - **Password Reset**: Implement a "Forgot Password" flow using Supabase's `sendPasswordResetEmail` and a page to handle the password update.
 
 ```
+

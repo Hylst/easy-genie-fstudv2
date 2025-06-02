@@ -24,6 +24,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
+import { Checkbox } from "@/components/ui/checkbox"; // Correct Checkbox import
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { PriorityTask, CreatePriorityTaskDTO, Frequency } from '@/types';
@@ -46,7 +47,6 @@ const frequencies: { value: Frequency, label: string, description: string }[] = 
 ];
 
 type QuadrantKey = PriorityTask['quadrant'];
-// const PRIORITY_GRID_STORAGE_KEY_TASKS = "easyGeniePriorityGridTasks_v1"; // No longer used for tasks
 const PRIORITY_GRID_CUSTOM_PRESETS_KEY = "easyGeniePriorityGridCustomPresets_v1";
 
 
@@ -158,7 +158,7 @@ export function PriorityGridTool() {
 
   const fetchTasks = useCallback(async () => {
     if (!user) {
-      setTasks([]);
+      setTasks([]); // Clear tasks if no user
       setIsLoadingTasks(false);
       return;
     }
@@ -170,28 +170,30 @@ export function PriorityGridTool() {
       console.error("Error fetching priority tasks:", error);
       toast({
         title: "Erreur de chargement des tâches",
-        description: (error as Error).message || "Impossible de récupérer les tâches de la base de données.",
+        description: (error as Error).message || "Impossible de récupérer les tâches.",
         variant: "destructive",
       });
-      setTasks([]);
+      setTasks([]); // Clear tasks on error
     } finally {
       setIsLoadingTasks(false);
     }
-  }, [user, toast]);
+  }, [user, toast]); // isOnline is implicitly handled by AppDataService via AuthContext
 
   useEffect(() => {
     fetchTasks();
-  }, [user, isOnline, fetchTasks]); // Re-fetch if user, online status, or fetchTasks callback changes
+  }, [fetchTasks, isOnline]); // Re-fetch if user changes (via fetchTasks dep) or isOnline changes
 
   const loadCustomPresets = useCallback(() => {
-    const savedCustomPresets = localStorage.getItem(PRIORITY_GRID_CUSTOM_PRESETS_KEY);
-    if (savedCustomPresets) {
-      try {
-        setCustomPresets(JSON.parse(savedCustomPresets));
-      } catch (error) {
-        console.error("Failed to parse custom presets from localStorage", error);
-        toast({ title: "Erreur de chargement des presets personnalisés", description: "Impossible de charger vos presets.", variant: "destructive"});
-      }
+    if (typeof window !== 'undefined') {
+        const savedCustomPresets = localStorage.getItem(PRIORITY_GRID_CUSTOM_PRESETS_KEY);
+        if (savedCustomPresets) {
+        try {
+            setCustomPresets(JSON.parse(savedCustomPresets));
+        } catch (error) {
+            console.error("Failed to parse custom presets from localStorage", error);
+            toast({ title: "Erreur de chargement des presets personnalisés", description: "Impossible de charger vos presets.", variant: "destructive"});
+        }
+        }
     }
   }, [toast]);
 
@@ -202,7 +204,9 @@ export function PriorityGridTool() {
 
   const saveCustomPresetsToLocalStorage = (updatedCustomPresets: Preset[]) => {
     setCustomPresets(updatedCustomPresets);
-    localStorage.setItem(PRIORITY_GRID_CUSTOM_PRESETS_KEY, JSON.stringify(updatedCustomPresets));
+     if (typeof window !== 'undefined') {
+        localStorage.setItem(PRIORITY_GRID_CUSTOM_PRESETS_KEY, JSON.stringify(updatedCustomPresets));
+    }
   }
 
   const resetNewTaskForm = () => {
@@ -230,9 +234,9 @@ export function PriorityGridTool() {
         text: newTaskText,
         quadrant: selectedQuadrant,
         frequency: newFrequency === "once" ? undefined : newFrequency,
-        specificDate: newSpecificDate ? newSpecificDate.toISOString().split('T')[0] : undefined, // Ensure only date part for DB
+        specificDate: newSpecificDate ? newSpecificDate.toISOString().split('T')[0] : undefined,
         specificTime: newSpecificTime || undefined,
-        isCompleted: false, // Default for new tasks
+        isCompleted: false,
       };
       const addedTask = await addPriorityTask(taskDto);
       setTasks(prevTasks => [...prevTasks, addedTask]);
@@ -247,8 +251,11 @@ export function PriorityGridTool() {
   };
 
   const handleDeleteTask = async (id: string) => {
-    if (!user) return;
-    setIsSubmitting(true); // Consider a specific deleting state if needed
+    if (!user) {
+        toast({ title: "Non connecté", description: "Veuillez vous connecter pour supprimer des tâches.", variant: "destructive"});
+        return;
+    }
+    setIsSubmitting(true); 
     try {
       await deletePriorityTask(id);
       setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
@@ -266,7 +273,7 @@ export function PriorityGridTool() {
     setEditText(task.text);
     setEditQuadrant(task.quadrant);
     setEditFrequency(task.frequency || undefined); 
-    setEditSpecificDate(task.specificDate ? new Date(task.specificDate) : undefined);
+    setEditSpecificDate(task.specificDate ? new Date(`${task.specificDate}T00:00:00`) : undefined); // Ensure correct Date object from string
     setEditSpecificTime(task.specificTime || '');
     setShowEditTaskAdvanced(!!(task.frequency || task.specificDate || task.specificTime));
   };
@@ -284,9 +291,7 @@ export function PriorityGridTool() {
         frequency: editFrequency === "once" ? undefined : editFrequency,
         specificDate: editSpecificDate ? editSpecificDate.toISOString().split('T')[0] : undefined,
         specificTime: editSpecificTime || undefined,
-        // isCompleted will be part of taskUpdateDto if changed via a checkbox
-        // For now, assuming completion is toggled directly on the card.
-        // If completion is part of edit dialog, include: isCompleted: editingTask.isCompleted 
+        isCompleted: editingTask.isCompleted, // Keep existing completion status, or handle if changed in dialog
       };
       const updated = await updatePriorityTask(editingTask.id, taskUpdateDto);
       setTasks(prevTasks => prevTasks.map(t => t.id === editingTask.id ? updated : t));
@@ -301,7 +306,10 @@ export function PriorityGridTool() {
   };
 
   const handleToggleComplete = async (task: PriorityTask) => {
-    if (!user) return;
+    if (!user) {
+        toast({ title: "Non connecté", description: "Veuillez vous connecter pour modifier des tâches.", variant: "destructive"});
+        return;
+    }
     setIsSubmitting(true);
     try {
       const updated = await updatePriorityTask(task.id, { isCompleted: !task.isCompleted });
@@ -328,13 +336,7 @@ export function PriorityGridTool() {
       setNewSpecificDate(tomorrow);
     } else if (preset.specificDate) {
        try {
-        // Ensure date string is valid for Date constructor (e.g., YYYY-MM-DD)
-        const dateParts = preset.specificDate.split('-');
-        if (dateParts.length === 3) {
-            setNewSpecificDate(new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2])));
-        } else {
-            setNewSpecificDate(new Date(preset.specificDate)); // Fallback
-        }
+        setNewSpecificDate(new Date(`${preset.specificDate}T00:00:00`));
        } catch (e) {
         setNewSpecificDate(undefined); 
        }
@@ -352,15 +354,23 @@ export function PriorityGridTool() {
   };
 
   const handleOpenSavePresetDialog = () => {
+    if (!user) {
+        toast({ title: "Non connecté", description: "Veuillez vous connecter pour sauvegarder des presets.", variant: "destructive"});
+        return;
+    }
     if (!newTaskText.trim()) {
       toast({ title: "Description de tâche vide", description: "Veuillez d'abord décrire la tâche que vous souhaitez sauvegarder comme preset.", variant: "destructive" });
       return;
     }
-    setNewPresetName(newTaskText.substring(0, 50)); // Pre-fill with task text
+    setNewPresetName(newTaskText.substring(0, 50)); 
     setIsSavePresetDialogOpen(true);
   };
 
   const handleSaveCustomPreset = () => {
+    if (!user) {
+        toast({ title: "Non connecté", description: "Veuillez vous connecter.", variant: "destructive"});
+        return;
+    }
     if (!newPresetName.trim()) {
       toast({ title: "Nom de preset manquant", description: "Veuillez donner un nom à votre preset.", variant: "destructive"});
       return;
@@ -399,11 +409,9 @@ export function PriorityGridTool() {
   };
 
 
-  const formatDate = (dateString?: string) => {
+  const formatDateDisplay = (dateString?: string) => {
     if (!dateString) return '';
     try {
-      // Supabase stores DATE as YYYY-MM-DD. We need to ensure client doesn't misinterpret timezone.
-      // Adding time part 'T00:00:00' to make it explicit UTC date for parsing, then format.
       return format(new Date(`${dateString}T00:00:00`), "dd/MM/yyyy", { locale: fr });
     } catch (e) {
       return "Date invalide";
@@ -420,19 +428,19 @@ export function PriorityGridTool() {
       <h3 className="font-semibold text-lg mb-3 text-foreground">{title}</h3>
       <div className="space-y-2 flex-grow">
         {isLoadingTasks && <div className="flex justify-center items-center h-full"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>}
-        {!isLoadingTasks && tasks.filter(task => task.quadrant === quadrantKey).map(task => (
+        {!isLoadingTasks && user && tasks.filter(task => task.quadrant === quadrantKey).map(task => (
           <div key={task.id} className={`bg-background/80 p-3 rounded-md shadow-sm hover:shadow-md transition-shadow ${task.isCompleted ? 'opacity-60' : ''}`}>
             <div className="flex justify-between items-start">
               <div className="flex items-center flex-grow mr-2">
                  <Checkbox 
-                    id={`task-${task.id}`} 
+                    id={`task-cb-${task.id}`} 
                     checked={task.isCompleted} 
                     onCheckedChange={() => handleToggleComplete(task)}
                     className="mr-2 flex-shrink-0"
                     disabled={isSubmitting || !user}
                     aria-label={`Marquer la tâche ${task.text} comme ${task.isCompleted ? 'non complétée' : 'complétée'}`}
                   />
-                <p className={`text-sm text-foreground break-words ${task.isCompleted ? 'line-through' : ''}`}>{task.text}</p>
+                <Label htmlFor={`task-cb-${task.id}`} className={`text-sm text-foreground break-words cursor-pointer ${task.isCompleted ? 'line-through' : ''}`}>{task.text}</Label>
               </div>
               <div className="flex-shrink-0 flex gap-1">
                 <TooltipProvider>
@@ -460,18 +468,18 @@ export function PriorityGridTool() {
             {(task.frequency || task.specificDate || task.specificTime) && (
               <div className="mt-1.5 pt-1.5 border-t border-muted/50 text-xs text-muted-foreground space-y-0.5">
                 {task.frequency && <p><span className="font-medium">Fréq.:</span> {getFrequencyLabel(task.frequency)}</p>}
-                {task.specificDate && <p><CalendarIcon className="inline h-3 w-3 mr-1"/> {formatDate(task.specificDate)}</p>}
+                {task.specificDate && <p><CalendarIcon className="inline h-3 w-3 mr-1"/> {formatDateDisplay(task.specificDate)}</p>}
                 {task.specificTime && <p><Clock className="inline h-3 w-3 mr-1"/> {task.specificTime}</p>}
               </div>
             )}
           </div>
         ))}
       </div>
-      {!isLoadingTasks && tasks.filter(task => task.quadrant === quadrantKey).length === 0 && (
+      {!isLoadingTasks && user && tasks.filter(task => task.quadrant === quadrantKey).length === 0 && (
         <p className="text-sm text-muted-foreground italic mt-auto">Aucune tâche ici.</p>
       )}
        {!isLoadingTasks && !user && (
-        <p className="text-sm text-muted-foreground italic mt-auto">Connectez-vous pour voir vos tâches.</p>
+        <p className="text-sm text-muted-foreground italic mt-auto">Connectez-vous pour voir et gérer vos tâches.</p>
       )}
     </div>
   );
@@ -481,7 +489,7 @@ export function PriorityGridTool() {
       <Card className="w-full max-w-5xl mx-auto shadow-xl">
         <CardHeader>
           <CardTitle className="text-3xl font-bold text-primary">PriorityGrid Magique</CardTitle>
-          <CardDescription>Organisez vos tâches avec la matrice d'Eisenhower. {isOnline ? "Connecté au serveur." : "Mode hors ligne."} {user ? `Utilisateur: ${user.email}` : "Non connecté."}</CardDescription>
+          <CardDescription>Organisez vos tâches avec la matrice d'Eisenhower. {user ? (isOnline ? "Mode En Ligne." : "Mode Hors Ligne.") : "Non connecté."}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <IntensitySelector value={intensity} onChange={setIntensity} />
@@ -649,7 +657,7 @@ export function PriorityGridTool() {
                                     >
                                       <div>
                                         <p className="font-medium text-foreground">{preset.name}</p>
-                                        <p className="text-xs text-muted-foreground">{preset.text} <br/>(Quadrant: {preset.quadrant.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())})</p>
+                                        <p className="text-xs text-muted-foreground">{preset.text} <br/>(Quadrant: {preset.quadrant.replace(/([A-Z])/g, ' $1').replace(/^./, (str) => str.toUpperCase())})</p>
                                       </div>
                                     </Button>
                                   ))}
@@ -706,7 +714,7 @@ export function PriorityGridTool() {
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 required
-                disabled={isSubmitting}
+                disabled={isSubmitting || !user}
               />
             </div>
             <div className="space-y-1">
@@ -724,7 +732,7 @@ export function PriorityGridTool() {
                   </TooltipContent>
                 </Tooltip>
               </Label>
-              <Select value={editQuadrant} onValueChange={(value) => setEditQuadrant(value as QuadrantKey)} required disabled={isSubmitting}>
+              <Select value={editQuadrant} onValueChange={(value) => setEditQuadrant(value as QuadrantKey)} required disabled={isSubmitting || !user}>
                 <SelectTrigger id="edit-task-quadrant">
                   <SelectValue placeholder="Choisir quadrant" />
                 </SelectTrigger>
@@ -742,7 +750,7 @@ export function PriorityGridTool() {
                 variant="link" 
                 onClick={() => setShowEditTaskAdvanced(!showEditTaskAdvanced)} 
                 className="p-0 h-auto text-sm justify-start mt-2"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !user}
               >
                 {showEditTaskAdvanced ? <ChevronUp className="mr-1 h-4 w-4"/> : <ChevronDown className="mr-1 h-4 w-4"/>}
                 Options avancées
@@ -752,7 +760,7 @@ export function PriorityGridTool() {
                <div className="space-y-4 p-4 border rounded-md bg-background/50 mt-1">
                  <div className="space-y-1">
                     <Label htmlFor="edit-task-frequency">Fréquence</Label>
-                    <Select value={editFrequency || "once"} onValueChange={(value) => setEditFrequency(value as Frequency)} disabled={isSubmitting}>
+                    <Select value={editFrequency || "once"} onValueChange={(value) => setEditFrequency(value as Frequency)} disabled={isSubmitting || !user}>
                         <SelectTrigger id="edit-task-frequency">
                             <SelectValue placeholder="Choisir fréquence" />
                         </SelectTrigger>
@@ -769,7 +777,7 @@ export function PriorityGridTool() {
                           variant={"outline"}
                           className="w-full justify-start text-left font-normal"
                           id="edit-task-date"
-                          disabled={isSubmitting}
+                          disabled={isSubmitting || !user}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {editSpecificDate ? format(editSpecificDate, "PPP", { locale: fr }) : <span>Choisir date</span>}
@@ -782,7 +790,7 @@ export function PriorityGridTool() {
                           onSelect={(date) => setEditSpecificDate(date)}
                           initialFocus
                           locale={fr}
-                          disabled={isSubmitting}
+                          disabled={isSubmitting || !user}
                         />
                       </PopoverContent>
                     </Popover>
@@ -794,7 +802,7 @@ export function PriorityGridTool() {
                       type="time"
                       value={editSpecificTime}
                       onChange={(e) => setEditSpecificTime(e.target.value)}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || !user}
                     />
                   </div>
                </div>
@@ -804,7 +812,7 @@ export function PriorityGridTool() {
             <DialogClose asChild>
                 <Button type="button" variant="outline" disabled={isSubmitting}>Annuler</Button>
             </DialogClose>
-            <Button type="button" onClick={handleUpdateTask} disabled={isSubmitting}>
+            <Button type="button" onClick={handleUpdateTask} disabled={isSubmitting || !user}>
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
               {isSubmitting ? "Sauvegarde..." : "Sauvegarder"}
             </Button>
@@ -830,12 +838,13 @@ export function PriorityGridTool() {
                 onChange={(e) => setNewPresetName(e.target.value)}
                 placeholder="Ex: Ma tâche hebdomadaire importante"
                 required
+                disabled={!user}
               />
             </div>
             <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
               <p className="font-medium">Aperçu de la tâche à sauvegarder :</p>
               <p><strong>Texte :</strong> {newTaskText || "Non défini"}</p>
-              <p><strong>Quadrant :</strong> {selectedQuadrant.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</p>
+              <p><strong>Quadrant :</strong> {selectedQuadrant.replace(/([A-Z])/g, ' $1').replace(/^./, (str) => str.toUpperCase())}</p>
               {newFrequency && <p><strong>Fréquence :</strong> {getFrequencyLabel(newFrequency)}</p>}
               {newSpecificDate && <p><strong>Date :</strong> {format(newSpecificDate, "PPP", { locale: fr })}</p>}
               {newSpecificTime && <p><strong>Heure :</strong> {newSpecificTime}</p>}
@@ -845,8 +854,13 @@ export function PriorityGridTool() {
             <DialogClose asChild>
               <Button type="button" variant="outline" onClick={() => setNewPresetName('')}>Annuler</Button>
             </DialogClose>
-            <Button type="button" onClick={handleSaveCustomPreset} disabled={!newPresetName.trim() || !newTaskText.trim()}>
+            <Button type="button" onClick={handleSaveCustomPreset} disabled={!user || !newPresetName.trim() || !newTaskText.trim()}>
               Sauvegarder le Preset
             </Button>
           </DialogFooter>
-        </
+        </DialogContent>
+      </Dialog>
+    </TooltipProvider>
+  );
+}
+
