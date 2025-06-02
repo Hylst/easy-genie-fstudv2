@@ -81,7 +81,7 @@
     - Provided `supabase_schema.sql` for user to set up tables (brain_dumps, routines, routine_steps, task_breaker_tasks, priority_tasks) and RLS policies in their Supabase project.
     - User executed `supabase_schema.sql` in their Supabase project.
 - **Database Integration (Phase 1: User Authentication)**:
-    - Implemented Sign Up (`/auth/signup`) and Log In (`/auth/login`) pages and UI logic using ShadCN components and Supabase client.
+    - Implemented Sign Up (`/auth/signup/page.tsx`) and Log In (`/auth/login/page.tsx`) pages with UI logic using ShadCN components, react-hook-form, Zod, and Supabase client methods.
     - Created `AuthContext` (`src/contexts/AuthContext.tsx`) for session management (listens to `onAuthStateChange` from Supabase).
     - Wrapped root layout in `AuthProvider`.
     - Updated `MagicHeader` (`src/components/common/magic-header.tsx`) to dynamically display:
