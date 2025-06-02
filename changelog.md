@@ -1,4 +1,3 @@
-
 # Changelog
 
 ## Done
@@ -131,11 +130,24 @@
     - Updated `AppDataService` CRUD methods for Routines (and Steps), Brain Dumps, and Task Breaker tasks with the try-Supabase-first, then-local-with-sync-status logic.
     - Implemented `synchronizeRoutines`, `synchronizeBrainDumps`, `synchronizeTaskBreakerTasks` in `AppDataService`.
     - Updated main `synchronizeAllData` in `AppDataService` to orchestrate syncing for all entities.
+- **Database Integration (Phase 5: Integrate Tools - BrainDumpTool)**:
+    - Refactored `BrainDumpTool` to use `AppDataService` instead of `localStorage`.
+    - Manages a single "active" brain dump record per user session (loads most recent, updates or creates new).
+    - Saves `dump_text`, `analysis_text`, and `intensity_level_on_analysis` to the database.
+    - Implemented debounced saving for `dumpText`.
+    - UI disabled and appropriate messages shown if no user is logged in.
+- **Database Integration (Phase 5: Integrate Tools - RoutineBuilderTool)**:
+    - Refactored `RoutineBuilderTool` to use `AppDataService` for routines and steps, removing `localStorage`.
+    - Fetches routines and their steps on load / user change / online status change.
+    *   All CRUD operations for routines and steps now use `AppDataService`.
+    *   Debounced saving for step text changes.
+    *   AI suggestions create routines and steps via `AppDataService`.
+    *   Loading states and UI disabling for logged-out users implemented.
 
 ## To Do
 
 - **Database & Sync Implementation (High Priority)**:
-    - **Phase 5: Integrate Other Tools** (TaskBreaker, RoutineBuilder, BrainDump) with `AppDataService` and the new data persistence layer.
+    - **Phase 5: Integrate Other Tools** (TaskBreaker) with `AppDataService` and the new data persistence layer.
     - **Phase 6: UI Feedback & Error Handling** for sync status, online/offline mode transitions, and data operation errors across all tools. (Refine existing toasts, consider global sync indicator).
     - **Phase 7: Advanced Sync Features (Future)**:
         * Delta sync from server (fetch only changes since `last_synced_at`).
@@ -151,7 +163,7 @@
     - Refine UI for very deep nesting if it becomes an issue.
     - Ensure robust recursive deletion of child tasks in Supabase (currently RLS/DB cascade dependent for remote).
 - **RoutineBuilder Tool Enhancements (Phase 2)**:
-    - Consider UI for reordering routines and steps.
+    - Consider UI for reordering routines and steps (order is saved, but no UI to change it yet).
     - Optional: Add specific time input for routines.
     *   Optional: Interactive execution mode (checking off steps as done for a specific day).
     - Refine voice input for editing existing step text (currently only appends).
