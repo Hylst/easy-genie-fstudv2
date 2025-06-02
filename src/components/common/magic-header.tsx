@@ -25,7 +25,7 @@ export function MagicHeader() {
       });
       return;
     }
-    toggleOnlineMode(); // This now calls the function from AuthContext
+    toggleOnlineMode(); 
     toast({
       title: `Mode ${isOnline ? 'Hors Ligne' : 'En Ligne'} Activé`,
       description: `Les données seront maintenant ${isOnline ? 'sauvegardées localement.' : 'synchronisées avec le serveur.'} (Logique de synchro à venir)`,
@@ -46,6 +46,7 @@ export function MagicHeader() {
         title: "Déconnecté",
         description: "Vous avez été déconnecté avec succès.",
       });
+      // Router push to home or login might be good here, but AuthContext handles state update
     }
   };
 
@@ -147,7 +148,7 @@ export function MagicHeader() {
             onClick={handleToggleOnlineStatus}
             title={isOnline ? "Mode actuel : En Ligne (cliquer pour passer Hors Ligne)" : "Mode actuel : Hors Ligne (cliquer pour passer En Ligne)"}
             className="w-32"
-            disabled={!user || loading} // Disable if not logged in or auth is loading
+            disabled={!user || loading} 
           >
             {isOnline ? <Wifi className="mr-2 h-4 w-4" /> : <WifiOff className="mr-2 h-4 w-4 text-muted-foreground" />}
             {isOnline ? 'En Ligne' : 'Hors Ligne'}
@@ -180,4 +181,13 @@ export function MagicHeader() {
                 </Link>
                </div>
               <nav className="flex flex-col space-y-3 px-4">
-                <Auth
+                <AuthLinksMobile />
+                {/* You can add more SheetClose wrapped links here for other mobile navigation if needed */}
+              </nav>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </div>
+    </header>
+  );
+}
