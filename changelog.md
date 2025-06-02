@@ -115,17 +115,32 @@
     - The "Hors ligne / Online" toggle in `MagicHeader` (managed via `AuthContext`) now effectively switches data sources for `PriorityGridTool` (IndexedDB or Supabase) via `AppDataService`, triggering data re-fetch.
     - Implemented loading states and error handling for data operations in `PriorityGridTool`.
     - Ensured task manipulation UI (add, edit, delete, complete) is disabled if no user is logged in.
+- **Database Integration (Phase 4: Synchronization Logic - PriorityTask)**:
+    - Updated `BaseEntity` in `src/types/index.ts` to include `sync_status` and `last_synced_at`.
+    - Updated `db.ts` (Dexie schema) to include `sync_status` as an indexed field.
+    - Updated `PriorityTaskIndexedDBService` to manage `sync_status`, implement soft deletes, and provide `getPendingChanges`, `updateSyncStatus`, `hardDelete` methods.
+    - Updated `AppDataService`'s CRUD methods for `PriorityTask` to:
+        - Attempt Supabase operation first if online.
+        - On success, update local IndexedDB and mark as synced.
+        - On failure (or if offline), perform operation locally and set pending `sync_status`.
+    - Implemented `synchronizePriorityTasks` in `AppDataService` for uploading pending changes and reconciling with server data.
+    - Updated `AuthContext` to trigger `synchronizeAllData` on login and when switching to online mode.
+- **Database Integration (Phase 4: Synchronization Logic - Extended to All Entities)**:
+    - Extended `sync_status` management and soft-delete logic to `RoutineIndexedDBService`, `BrainDumpIndexedDBService`, `TaskBreakerIndexedDBService`.
+    - Implemented `getPendingChanges`, `updateSyncStatus`, `hardDelete` (and `bulkUpdate`) helpers in these IndexedDB services.
+    - Updated `AppDataService` CRUD methods for Routines (and Steps), Brain Dumps, and Task Breaker tasks with the try-Supabase-first, then-local-with-sync-status logic.
+    - Implemented `synchronizeRoutines`, `synchronizeBrainDumps`, `synchronizeTaskBreakerTasks` in `AppDataService`.
+    - Updated main `synchronizeAllData` in `AppDataService` to orchestrate syncing for all entities.
 
 ## To Do
 
 - **Database & Sync Implementation (High Priority)**:
-    - **Phase 4: Synchronization Logic**
-        *   Implement logic for tracking local changes (dirty checking or pending sync log in IndexedDB when an online operation fails or when offline).
-        *   Implement initial sync (on login/switch to online): upload local changes, download remote changes, implement conflict resolution strategy (e.g., last write wins based on `updated_at`, or server/client priority).
-        *   Implement ongoing sync: attempt Supabase write first if online; if fails (e.g. network issue), queue locally with "pending_sync" status.
-        *   Implement offline-to-online sync: process pending_sync queue, fetch remote changes since last sync, resolve conflicts.
     - **Phase 5: Integrate Other Tools** (TaskBreaker, RoutineBuilder, BrainDump) with `AppDataService` and the new data persistence layer.
-    - **Phase 6: UI Feedback & Error Handling** for sync status, online/offline mode transitions, and data operation errors across all tools.
+    - **Phase 6: UI Feedback & Error Handling** for sync status, online/offline mode transitions, and data operation errors across all tools. (Refine existing toasts, consider global sync indicator).
+    - **Phase 7: Advanced Sync Features (Future)**:
+        * Delta sync from server (fetch only changes since `last_synced_at`).
+        * More robust conflict resolution strategies (beyond current server-wins-on-download).
+        * Background sync (web workers).
 - **PriorityGrid Tool Enhancements (Post-Database Integration)**:
     - Implement a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
     - Integrate voice input for adding/editing tasks in PriorityGrid.
@@ -134,7 +149,7 @@
 - **TaskBreaker Tool Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
-    - Ensure robust recursive deletion of child tasks in Supabase (currently relies on DB cascade or needs client-side recursion for Supabase service).
+    - Ensure robust recursive deletion of child tasks in Supabase (currently RLS/DB cascade dependent for remote).
 - **RoutineBuilder Tool Enhancements (Phase 2)**:
     - Consider UI for reordering routines and steps.
     - Optional: Add specific time input for routines.
@@ -144,7 +159,6 @@
 - Implement remaining tools from `tool-grid.tsx` (DecisionHelper, MoodTracker, FocusMode) with their specific functionalities, intensity level integrations, and database persistence.
 - Flesh out "Étincelles" (Sparks) page content.
 - Implement actual email sending for contact form.
-- Refine UI/UX across all tools, including responsive design, accessibility, loading states, and error handling for new features.
 - Add relevant image placeholders with `data-ai-hint` to all newly developed tool pages where appropriate.
 - Add tests (unit, integration).
 - Review and improve safety settings for Genkit flows.
@@ -152,6 +166,3 @@
 - **User Profile**: Consider a dedicated user profile page for managing account details (e.g., password change, profile picture if Supabase Storage is used).
 - **Email Confirmation**: Ensure "Confirm email" is enabled in Supabase project settings for production.
 - **Password Reset**: Implement a "Forgot Password" flow using Supabase's `sendPasswordResetEmail` and a page to handle the password update.
-
-```
-
