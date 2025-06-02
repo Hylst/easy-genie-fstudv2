@@ -49,21 +49,28 @@
     - Added voice input for the main task field.
     - Sub-tasks (AI-generated or manual) are saved to/loaded from localStorage.
     - **Recursive Breakdown**: Implemented ability to break down any sub-task into further sub-sub-tasks, both manually and using AI. UI updated with indentation and controls for nested tasks. State management refactored to handle tree structure. LocalStorage updated to `TASK_BREAKER_STORAGE_KEY_SUBTASKS_v2` due to structure change.
-- **PriorityGrid Tool Enhancements (Phase 1)**:
+- **PriorityGrid Tool Enhancements (Phase 1 - UI/UX & Basic Presets)**:
     - Updated `PriorityTask` interface to include optional `frequency`, `specificDate`, `specificTime`.
     - Enhanced the "Add Task" form with inputs for these new properties (Select for frequency, Popover Calendar for date, input type="time" for time).
+    - **UI Clarity**:
+        - Added asterisk `*` for required fields in "Add Task" and "Edit Task".
+        - Implemented collapsible "Options avancées" section for frequency, date, and time in both "Add Task" and "Edit Task" forms to reduce initial clutter.
+        - Added `Tooltip` components to clarify the purpose of quadrants and other input fields.
     - Implemented an "Edit Task" dialog to modify all task properties.
     - Task cards in the grid now display frequency, date, and time if set.
     - All task data, including new properties, is saved to/loaded from `localStorage` (using key `PRIORITY_GRID_STORAGE_KEY_v1`).
-    - Added a placeholder button "Charger un Preset" with a "Coming Soon" toast.
+    - Implemented a functional **Preset System**:
+        - "Charger un Preset" button opens a dialog.
+        - Dialog lists hardcoded, categorized presets (e.g., "Routine Matinale", "Projet Important").
+        - Selecting a preset populates the "Add Task" form, expanding advanced options if needed.
+        - Toast notification confirms preset loading.
 
 ## To Do
 
-- **PriorityGrid Tool Enhancements (Phase 2)**:
+- **PriorityGrid Tool Enhancements (Phase 2 - Recurrence & Storage)**:
     - Implement a basic client-side recurrence display logic (e.g., show "Due today" if daily and date matches).
     - Develop a full client-side recurrence engine (managing completion cycles, auto-generating next instances).
-    - Implement a functional preset system (potentially with categories, initially hardcoded, later AI-driven).
-    - Integrate voice input for adding/editing tasks.
+    - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
     - Consider transitioning local storage from `localStorage` to IndexedDB for better structured data handling.
     - Plan Firebase integration for remote data storage and synchronization (requires authentication).
@@ -90,4 +97,4 @@
 - Review and improve safety settings for Genkit flows.
 - **Voice Input**: Refine voice input for BrainDump, Formalizer. Fully implement for new tools where applicable.
 
-```
+    
