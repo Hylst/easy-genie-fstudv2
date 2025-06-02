@@ -70,17 +70,42 @@
     - Custom presets are named by the user via a dialog.
     - Custom presets are saved to/loaded from `localStorage` (using key `PRIORITY_GRID_CUSTOM_PRESETS_KEY_v1`).
     - Custom presets are displayed in the "Charger un Preset" dialog under a "Mes Presets Personnalisés" category.
+- **Database Integration Planning (Phase 0 Started)**:
+    - Installed `@supabase/supabase-js` library.
+    - Added placeholder `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to `.env`.
+    - Added a placeholder "Hors ligne / Online" toggle button to the header (currently non-functional, shows a toast).
+    - Detailed plan for IndexedDB and Supabase integration outlined.
 
 ## To Do
 
-- **PriorityGrid Tool Enhancements (Phase 2 - Recurrence & Storage)**:
-    - Implement a basic client-side recurrence display logic (e.g., show "Due today" if daily and date matches).
-    - Develop a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
+- **Database & Sync Implementation (High Priority)**:
+    - **Phase 0 (Continue)**:
+        - User to set up Supabase project (tables, RLS policies for data ownership).
+        - Create `src/lib/supabaseClient.ts` to initialize and export the Supabase client.
+    - **Phase 1: User Authentication (Supabase)**
+        - Implement Sign Up, Log In, Log Out UI and logic.
+        - Create `AuthContext` for session management (listen to `onAuthStateChange`).
+        - Update `MagicHeader` for auth state (show login/logout, user info).
+    - **Phase 2: Abstract Data Layer & Services**
+        - Define generic data service interface (e.g., `src/services/appDataService.ts`) and specific tool service interfaces (e.g., `IPriorityTaskService`).
+        - Implement IndexedDB providers for each tool service (e.g., using `idb` library).
+        - Implement Supabase providers for each tool service (queries must use `user_id`).
+        - Create combined `appDataService` with dynamic provider switching based on online/offline mode and auth state.
+    - **Phase 3: Integrate PriorityGrid with New Data Layer**
+        - Refactor `PriorityGridTool` to use `appDataService` instead of `localStorage`.
+        - Make "Hors ligne / Online" toggle functional, influencing `appDataService` mode.
+    - **Phase 4: Synchronization Logic**
+        - Implement logic for tracking local changes (dirty checking or pending sync log in IndexedDB).
+        - Implement initial sync (login/switch to online): upload local, download remote, conflict resolution (e.g., last write wins based on `updated_at`).
+        - Implement ongoing sync: attempt Supabase write first; if fails, queue locally.
+        - Implement offline-to-online sync: process queue, fetch remote changes, resolve conflicts.
+        - Ensure all records have UUIDs and `created_at`/`updated_at` timestamps.
+    - **Phase 5: Integrate Other Tools** (TaskBreaker, RoutineBuilder, BrainDump) with `appDataService`.
+    - **Phase 6: UI Feedback & Error Handling** for sync status, online/offline mode, and errors.
+- **PriorityGrid Tool Enhancements (Post-Database)**:
+    - Implement a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
     - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
-    - **Critical**: Transition data storage from `localStorage` to **IndexedDB** for more robust and larger local storage capacity (for tasks and custom presets).
-    - **Critical**: Plan and implement **Firebase (Firestore) integration** for remote data storage and synchronization (requires user authentication).
-- **User Authentication**: Implement user authentication (e.g., Firebase Auth) to enable personalized experiences and remote data storage.
 - **TaskBreaker Tool Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
@@ -94,13 +119,11 @@
     - DecisionHelper (placeholder page exists)
     - MoodTracker (placeholder page exists)
     - FocusMode (placeholder page exists)
-- Flesh out "Étincelles" (Sparks) page content.
+- Flesh out "Étincelles" (Sparks) page content and ensure the link in the header works as expected.
 - Implement actual email sending for contact form.
 - Refine UI/UX across all tools, including responsive design, accessibility, loading states, and error handling for new features.
 - Add relevant image placeholders with `data-ai-hint` to all newly developed tool pages where appropriate.
 - Add tests (unit, integration).
 - Review and improve safety settings for Genkit flows.
 - **Voice Input**: Refine voice input for BrainDump, Formalizer. Fully implement for new tools where applicable.
-    
 
-    
