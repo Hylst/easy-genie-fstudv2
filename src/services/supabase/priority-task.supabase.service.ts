@@ -48,18 +48,19 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
     if (!userId) {
         throw new Error("PriorityTaskSupabaseService.add: userId is required to add a task.");
     }
-    const taskToAdd = {
-      ...taskData,
+    // Explicitly use snake_case for is_completed as a diagnostic step
+    const { isCompleted, ...restTaskData } = taskData;
+    const taskPayload: any = {
+      ...restTaskData,
       user_id: userId,
-      isCompleted: taskData.isCompleted ?? false,
+      is_completed: isCompleted ?? false, // Explicitly use snake_case key
     };
-    // Log the object being sent to Supabase for diagnostics
-    console.log("Attempting to add to Supabase (priority_tasks):", JSON.stringify(taskToAdd, null, 2));
-
+    
+    console.log("Attempting to add to Supabase (priority_tasks) with explicit snake_case payload:", JSON.stringify(taskPayload, null, 2));
 
     const { data, error } = await supabase
       .from(this.tableName)
-      .insert(taskToAdd)
+      .insert(taskPayload) // Send the payload with is_completed
       .select()
       .single();
 
@@ -77,9 +78,7 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
                 console.error("Could not stringify the full Supabase error object.");
             }
         }
-        // console.error is already called above with errorDetails if possible
         console.error("Error adding priority task to Supabase (summary):", errorMessage, "Original error object:", error);
-        // Re-throw as a standard Error, including details if possible
         const customError = new Error(`Supabase add failed: ${errorMessage}${errorDetails ? ` (Details: ${errorDetails})` : ''}`);
         (customError as any).originalError = error; // Attach original error if needed upstream
         throw customError;
@@ -94,12 +93,17 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
     if (!userId) {
         throw new Error("PriorityTaskSupabaseService.update: userId is required to update a task.");
     }
-    const { user_id: ignoredUserIdInDTO, ...restOfTaskData } = taskData as any; 
+    // Explicitly use snake_case for is_completed if present in taskData
+    const { user_id: ignoredUserIdInDTO, isCompleted, ...restOfTaskData } = taskData as any; 
 
-    const taskToUpdate = {
+    const taskToUpdate: any = {
       ...restOfTaskData,
     };
-    console.log(`Attempting to update task ${id} in Supabase (priority_tasks):`, JSON.stringify(taskToUpdate, null, 2));
+    if (isCompleted !== undefined) { // Only include is_completed if it's part of the update
+        taskToUpdate.is_completed = isCompleted;
+    }
+    
+    console.log(`Attempting to update task ${id} in Supabase (priority_tasks) with explicit snake_case payload:`, JSON.stringify(taskToUpdate, null, 2));
     
     const { data, error } = await supabase
       .from(this.tableName)
