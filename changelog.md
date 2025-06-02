@@ -61,19 +61,21 @@
     - All task data, including new properties, is saved to/loaded from `localStorage` (using key `PRIORITY_GRID_STORAGE_KEY_v1`).
     - Implemented a functional **Preset System**:
         - "Charger un Preset" button opens a dialog.
-        - Dialog lists hardcoded, categorized presets (e.g., "Routine Matinale", "Projet Important").
+        - Dialog lists hardcoded, categorized presets using an Accordion for a tree-like structure.
         - Selecting a preset populates the "Add Task" form, expanding advanced options if needed.
         - Toast notification confirms preset loading.
+        - Added more preset categories and items.
 
 ## To Do
 
 - **PriorityGrid Tool Enhancements (Phase 2 - Recurrence & Storage)**:
     - Implement a basic client-side recurrence display logic (e.g., show "Due today" if daily and date matches).
-    - Develop a full client-side recurrence engine (managing completion cycles, auto-generating next instances).
+    - Develop a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
     - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
-    - Consider transitioning local storage from `localStorage` to IndexedDB for better structured data handling.
-    - Plan Firebase integration for remote data storage and synchronization (requires authentication).
+    - **Critical**: Transition data storage from `localStorage` to **IndexedDB** for more robust and larger local storage capacity.
+    - **Critical**: Plan and implement **Firebase (Firestore) integration** for remote data storage and synchronization (requires user authentication).
+- **User Authentication**: Implement user authentication (e.g., Firebase Auth) to enable personalized experiences and remote data storage.
 - **TaskBreaker Tool Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
@@ -87,14 +89,13 @@
     - DecisionHelper (placeholder page exists)
     - MoodTracker (placeholder page exists)
     - FocusMode (placeholder page exists)
-- Add user authentication (e.g., Firebase Auth).
 - Flesh out "Étincelles" (Sparks) page content.
 - Implement actual email sending for contact form.
 - Refine UI/UX across all tools, including responsive design, accessibility, loading states, and error handling for new features.
 - Add relevant image placeholders with `data-ai-hint` to all newly developed tool pages where appropriate.
-- Store tool data for authenticated users (e.g., using Firestore, once auth is in place).
 - Add tests (unit, integration).
 - Review and improve safety settings for Genkit flows.
 - **Voice Input**: Refine voice input for BrainDump, Formalizer. Fully implement for new tools where applicable.
+    
 
     

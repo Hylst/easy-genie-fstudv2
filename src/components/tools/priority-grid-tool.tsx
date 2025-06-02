@@ -56,8 +56,8 @@ interface Preset {
   text: string;
   quadrant: QuadrantKey;
   frequency?: Frequency;
-  specificDate?: string; // relative date like "today", "tomorrow", or "next Monday" that needs parsing, or leave empty
-  specificTime?: string; // HH:mm
+  specificDate?: string; 
+  specificTime?: string; 
 }
 
 interface PresetCategory {
@@ -68,31 +68,55 @@ interface PresetCategory {
 
 const hardcodedPresets: PresetCategory[] = [
   {
-    id: 'morning',
+    id: 'morning_routine',
     name: '🚀 Routine Matinale Énergisante',
     presets: [
       { id: 'm1', name: 'Planifier la journée', text: "Définir les 3 priorités du jour", quadrant: 'urgentImportant', frequency: 'daily', specificTime: '08:00' },
       { id: 'm2', name: 'Méditation rapide', text: "5-10 min de méditation/pleine conscience", quadrant: 'notUrgentImportant', frequency: 'daily', specificTime: '07:30' },
-      { id: 'm3', name: 'Emails urgents', text: "Traiter les emails critiques uniquement", quadrant: 'urgentNotImportant', specificTime: '08:30' },
+      { id: 'm3', name: 'Emails urgents (matin)', text: "Traiter les emails critiques uniquement", quadrant: 'urgentNotImportant', specificTime: '08:30', frequency: 'daily' },
+      { id: 'm4', name: 'Petit-déjeuner sain', text: "Préparer et prendre un petit-déjeuner équilibré", quadrant: 'notUrgentImportant', frequency: 'daily', specificTime: '07:00'},
     ],
   },
   {
-    id: 'work',
+    id: 'work_focus',
     name: '💼 Focus Projets Importants',
     presets: [
-      { id: 'w1', name: 'Bloc de travail profond', text: "Avancer sur [Nom du Projet Clé]", quadrant: 'notUrgentImportant', frequency: 'daily' },
-      { id: 'w2', name: 'Réunion de suivi', text: "Préparer et participer à la réunion [Nom]", quadrant: 'urgentImportant' },
-      { id: 'w3', name: 'Relecture document', text: "Relire et finaliser le document X", quadrant: 'notUrgentImportant' },
+      { id: 'w1', name: 'Bloc de travail profond 1', text: "Avancer sur [Nom du Projet Clé] - Session 1", quadrant: 'notUrgentImportant', frequency: 'daily', specificTime: '09:30'},
+      { id: 'w2', name: 'Préparer Réunion X', text: "Préparer l\'ordre du jour et documents pour la réunion [Nom]", quadrant: 'urgentImportant', specificDate: 'today' },
+      { id: 'w3', name: 'Relecture document Y', text: "Relire et finaliser le document [Nom du Document]", quadrant: 'notUrgentImportant' },
+      { id: 'w4', name: 'Répondre aux messages importants', text: "Traiter les messages Slack/Teams prioritaires", quadrant: 'urgentNotImportant', frequency: 'daily', specificTime: '14:00'},
     ],
   },
   {
-    id: 'personal',
+    id: 'personal_wellbeing',
     name: '🧘 Bien-être & Perso',
     presets: [
       { id: 'p1', name: 'Séance de sport', text: "Activité physique (course, gym, yoga)", quadrant: 'notUrgentImportant', frequency: 'weekly' },
-      { id: 'p2', name: 'Appeler un proche', text: "Prendre des nouvelles de [Nom]", quadrant: 'notUrgentImportant' },
-      { id: 'p3', name: 'Temps créatif', text: "Peinture, écriture, musique...", quadrant: 'notUrgentImportant', frequency: 'weekly'},
-      { id: 'p4', name: 'Payer facture Y', text: "Régler la facture [Nom de la facture]", quadrant: 'urgentImportant'},
+      { id: 'p2', name: 'Appeler un proche', text: "Prendre des nouvelles de [Nom de la personne]", quadrant: 'notUrgentImportant', frequency: 'weekly' },
+      { id: 'p3', name: 'Temps créatif / Hobby', text: "Dédier du temps à [Hobby : Peinture, écriture, musique...]", quadrant: 'notUrgentImportant', frequency: 'weekly'},
+      { id: 'p4', name: 'Payer facture Z', text: "Régler la facture [Nom de la facture]", quadrant: 'urgentImportant'},
+      { id: 'p5', name: 'Lecture', text: "Lire 30 minutes", quadrant: 'notUrgentImportant', frequency: 'daily', specificTime: '21:00' },
+    ],
+  },
+  {
+    id: 'evening_routine',
+    name: '🌙 Routine du Soir Apaisante',
+    presets: [
+      { id: 'e1', name: 'Préparer affaires pour demain', text: "Préparer vêtements, sac, déjeuner...", quadrant: 'notUrgentImportant', frequency: 'daily', specificTime: '20:00' },
+      { id: 'e2', name: 'Planifier le lendemain', text: "Revoir l'agenda et les tâches du lendemain", quadrant: 'notUrgentImportant', frequency: 'daily', specificTime: '20:30' },
+      { id: 'e3', name: 'Pas d\'écrans 1h avant coucher', text: "Éviter téléphone, TV, ordinateur", quadrant: 'notUrgentImportant', frequency: 'daily', specificTime: '21:30' },
+      { id: 'e4', name: 'Rituel détente', text: "Tisane, lecture légère, musique douce", quadrant: 'notUrgentImportant', frequency: 'daily', specificTime: '22:00' },
+    ],
+  },
+  {
+    id: 'household_chores',
+    name: '🏠 Tâches Ménagères',
+    presets: [
+        { id: 'hc1', name: 'Faire la vaisselle', text: "Nettoyer la vaisselle après le repas", quadrant: 'urgentNotImportant', frequency: 'daily' },
+        { id: 'hc2', name: 'Sortir les poubelles', text: "Sortir les poubelles (selon jour de collecte)", quadrant: 'urgentImportant', frequency: 'weekly' },
+        { id: 'hc3', name: 'Faire une lessive', text: "Lancer une machine de linge", quadrant: 'notUrgentImportant', frequency: 'weekly' },
+        { id: 'hc4', name: 'Nettoyer la salle de bain', text: "Nettoyage hebdomadaire de la salle de bain", quadrant: 'notUrgentImportant', frequency: 'weekly' },
+        { id: 'hc5', name: 'Faire les courses', text: "Acheter les provisions pour la semaine", quadrant: 'notUrgentImportant', frequency: 'weekly' },
     ],
   },
 ];
@@ -110,7 +134,7 @@ export function PriorityGridTool() {
   const [newSpecificDate, setNewSpecificDate] = useState<Date | undefined>(undefined);
   const [newSpecificTime, setNewSpecificTime] = useState<string>('');
   const [showNewTaskAdvanced, setShowNewTaskAdvanced] = useState(false);
-  const [isPresetDialogValid, setIsPresetDialogValid] = useState(false);
+  const [isPresetDialogOpen, setIsPresetDialogOpen] = useState(false);
 
 
   // State for editing task
@@ -179,7 +203,7 @@ export function PriorityGridTool() {
     setEditingTask(task);
     setEditText(task.text);
     setEditQuadrant(task.quadrant);
-    setEditFrequency(task.frequency || undefined);
+    setEditFrequency(task.frequency || undefined); // "once" is stored as undefined
     setEditSpecificDate(task.specificDate ? new Date(task.specificDate) : undefined);
     setEditSpecificTime(task.specificTime || '');
     setShowEditTaskAdvanced(!!(task.frequency || task.specificDate || task.specificTime));
@@ -204,15 +228,14 @@ export function PriorityGridTool() {
     );
     saveTasks(updatedTasks);
     toast({ title: "Tâche mise à jour!" });
-    setEditingTask(null);
+    setEditingTask(null); // Close dialog
   };
   
   const loadPreset = (preset: Preset) => {
     setNewTaskText(preset.text);
     setSelectedQuadrant(preset.quadrant);
-    setNewFrequency(preset.frequency);
+    setNewFrequency(preset.frequency === "once" ? undefined : preset.frequency);
     
-    // Basic relative date parsing for presets (can be expanded)
     if (preset.specificDate === "today") {
       setNewSpecificDate(new Date());
     } else if (preset.specificDate === "tomorrow") {
@@ -221,9 +244,9 @@ export function PriorityGridTool() {
       setNewSpecificDate(tomorrow);
     } else if (preset.specificDate) {
        try {
-        setNewSpecificDate(new Date(preset.specificDate)); // If it's an ISO string already
+        setNewSpecificDate(new Date(preset.specificDate));
        } catch (e) {
-        setNewSpecificDate(undefined); // Or handle other relative terms more robustly
+        setNewSpecificDate(undefined); 
        }
     } else {
       setNewSpecificDate(undefined);
@@ -231,7 +254,7 @@ export function PriorityGridTool() {
 
     setNewSpecificTime(preset.specificTime || '');
     setShowNewTaskAdvanced(!!(preset.frequency || preset.specificDate || preset.specificTime));
-    setIsPresetDialogValid(false); // Close dialog
+    setIsPresetDialogOpen(false); // Close dialog
     toast({
       title: "Preset chargé !",
       description: `Le preset "${preset.name}" a été chargé dans le formulaire. Ajustez-le si besoin.`,
@@ -381,10 +404,10 @@ export function PriorityGridTool() {
                             <TooltipTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-5 w-5 ml-1 p-0" type="button"><Info className="h-3 w-3"/></Button>
                             </TooltipTrigger>
-                            <TooltipContent side="right"><p>À quelle fréquence cette tâche se répète-t-elle ?</p></TooltipContent>
+                            <TooltipContent side="right"><p>À quelle fréquence cette tâche se répète-t-elle ? Choisissez "Une fois" si non récurrente.</p></TooltipContent>
                           </Tooltip>
                         </Label>
-                        <Select value={newFrequency} onValueChange={(value) => setNewFrequency(value as Frequency)}>
+                        <Select value={newFrequency || "once"} onValueChange={(value) => setNewFrequency(value as Frequency)}>
                             <SelectTrigger id="new-task-frequency" className="w-full mt-1">
                                 <SelectValue placeholder="Choisir fréquence (optionnel)" />
                             </SelectTrigger>
@@ -438,7 +461,7 @@ export function PriorityGridTool() {
                   <PlusCircle className="mr-2 h-4 w-4" /> Ajouter la Tâche
                 </Button>
                 
-                <Dialog open={isPresetDialogValid} onOpenChange={setIsPresetDialogValid}>
+                <Dialog open={isPresetDialogOpen} onOpenChange={setIsPresetDialogOpen}>
                   <DialogTrigger asChild>
                     <Button type="button" variant="outline" className="w-full sm:w-auto">
                       <WandSparkles className="mr-2 h-4 w-4" /> Charger un Preset
@@ -451,31 +474,33 @@ export function PriorityGridTool() {
                         Choisissez un modèle de tâche pour démarrer rapidement. Vous pourrez l'ajuster avant de l'ajouter.
                       </DialogDescription>
                     </DialogHeader>
-                    <div className="flex-grow overflow-y-auto pr-2">
-                    <Accordion type="multiple" className="w-full space-y-2">
-                      {hardcodedPresets.map(category => (
-                        <AccordionItem value={category.id} key={category.id} className="border rounded-md">
-                          <AccordionTrigger className="px-4 hover:no-underline">{category.name}</AccordionTrigger>
-                          <AccordionContent className="px-4 pt-0 pb-2">
-                            <div className="space-y-2">
-                              {category.presets.map(preset => (
-                                <Button
-                                  key={preset.id}
-                                  variant="ghost"
-                                  className="w-full justify-start h-auto py-2 text-left"
-                                  onClick={() => loadPreset(preset)}
-                                >
-                                  <div>
-                                    <p className="font-medium">{preset.name}</p>
-                                    <p className="text-xs text-muted-foreground">{preset.text} ({preset.quadrant.replace(/([A-Z])/g, ' $1').toLowerCase()})</p>
-                                  </div>
-                                </Button>
-                              ))}
-                            </div>
-                          </AccordionContent>
-                        </AccordionItem>
-                      ))}
-                    </Accordion>
+                    <div className="flex-grow overflow-y-auto pr-2 -mr-2 py-2">
+                      <Accordion type="multiple" className="w-full space-y-2">
+                        {hardcodedPresets.map(category => (
+                          <AccordionItem value={category.id} key={category.id} className="border rounded-md shadow-sm bg-card">
+                            <AccordionTrigger className="px-4 py-3 hover:no-underline text-primary font-medium">
+                              {category.name}
+                            </AccordionTrigger>
+                            <AccordionContent className="px-4 pt-0 pb-2">
+                              <div className="space-y-2 mt-2">
+                                {category.presets.map(preset => (
+                                  <Button
+                                    key={preset.id}
+                                    variant="ghost"
+                                    className="w-full justify-start h-auto py-2.5 text-left hover:bg-accent/50"
+                                    onClick={() => loadPreset(preset)}
+                                  >
+                                    <div>
+                                      <p className="font-medium text-foreground">{preset.name}</p>
+                                      <p className="text-xs text-muted-foreground">{preset.text} <br/>(Quadrant: {preset.quadrant.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())})</p>
+                                    </div>
+                                  </Button>
+                                ))}
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        ))}
+                      </Accordion>
                     </div>
                     <DialogFooter className="mt-4">
                       <DialogClose asChild>
@@ -567,7 +592,7 @@ export function PriorityGridTool() {
                <div className="space-y-4 p-4 border rounded-md bg-background/50 mt-1">
                  <div className="space-y-1">
                     <Label htmlFor="edit-task-frequency">Fréquence</Label>
-                    <Select value={editFrequency} onValueChange={(value) => setEditFrequency(value as Frequency)}>
+                    <Select value={editFrequency || "once"} onValueChange={(value) => setEditFrequency(value as Frequency)}>
                         <SelectTrigger id="edit-task-frequency">
                             <SelectValue placeholder="Choisir fréquence" />
                         </SelectTrigger>
