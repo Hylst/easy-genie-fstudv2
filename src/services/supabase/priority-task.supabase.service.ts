@@ -53,6 +53,7 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
       user_id: userId,
       isCompleted: taskData.isCompleted ?? false,
     };
+    // Log the object being sent to Supabase for diagnostics
     console.log("Attempting to add to Supabase (priority_tasks):", JSON.stringify(taskToAdd, null, 2));
 
 
@@ -76,14 +77,15 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
                 console.error("Could not stringify the full Supabase error object.");
             }
         }
-        console.error("Error adding priority task to Supabase:", errorMessage, error); // Log original error too
+        // console.error is already called above with errorDetails if possible
+        console.error("Error adding priority task to Supabase (summary):", errorMessage, "Original error object:", error);
         // Re-throw as a standard Error, including details if possible
         const customError = new Error(`Supabase add failed: ${errorMessage}${errorDetails ? ` (Details: ${errorDetails})` : ''}`);
         (customError as any).originalError = error; // Attach original error if needed upstream
         throw customError;
     }
     if (!data) {
-        throw new Error("Failed to add priority task to Supabase, no data returned (อาจจะ RLS policy?).");
+        throw new Error("Failed to add priority task to Supabase, no data returned (check RLS policies and ensure operation succeeded).");
     }
     return data as PriorityTask;
   }
@@ -116,12 +118,12 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
             }
              try {
                 errorDetails = JSON.stringify(error);
-                console.error("Full Supabase error object (JSON):", errorDetails);
+                console.error("Full Supabase error object (JSON) for update:", errorDetails);
             } catch (e) {
-                console.error("Could not stringify the full Supabase error object.");
+                console.error("Could not stringify the full Supabase error object for update.");
             }
         }
-        console.error(`Error updating priority task ${id} in Supabase:`, errorMessage, error);
+        console.error(`Error updating priority task ${id} in Supabase (summary):`, errorMessage, "Original error object:", error);
         const customError = new Error(`Supabase update failed for task ${id}: ${errorMessage}${errorDetails ? ` (Details: ${errorDetails})` : ''}`);
         (customError as any).originalError = error;
         throw customError;
@@ -152,12 +154,12 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
             }
             try {
                 errorDetails = JSON.stringify(error);
-                console.error("Full Supabase error object (JSON):", errorDetails);
+                console.error("Full Supabase error object (JSON) for delete:", errorDetails);
             } catch (e) {
-                console.error("Could not stringify the full Supabase error object.");
+                console.error("Could not stringify the full Supabase error object for delete.");
             }
         }
-        console.error(`Error deleting priority task ${id} from Supabase:`, errorMessage, error);
+        console.error(`Error deleting priority task ${id} from Supabase (summary):`, errorMessage, "Original error object:", error);
         const customError = new Error(`Supabase delete failed for task ${id}: ${errorMessage}${errorDetails ? ` (Details: ${errorDetails})` : ''}`);
         (customError as any).originalError = error;
         throw customError;
