@@ -7,23 +7,28 @@ import { Sheet, SheetContent, SheetTrigger, SheetClose } from '@/components/ui/s
 import { Menu, Wifi, WifiOff, LogIn, UserPlus, LogOut, UserCircle2 } from 'lucide-react';
 import { GenieLampIcon } from '@/components/icons/logo-icon';
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Import Avatar
-import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { useAuth } from '@/contexts/AuthContext';
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from '@/components/ui/skeleton';
 
 export function MagicHeader() {
   const { toast } = useToast();
-  const { user, session, loading, signOut } = useAuth(); // Get auth state and signOut function
-
-  // The isOnline state should eventually come from a global appDataService
-  // For now, it's just a local UI placeholder state for the button's appearance.
-  // We'll assume 'true' if logged in and capable of going online, 'false' otherwise for visual cue.
-  const isOnlineForDisplay = !!user; 
+  const { user, session, loading, signOut, isOnline, toggleOnlineMode } = useAuth();
   
-  const toggleOnlineStatus = () => {
+  const handleToggleOnlineStatus = () => {
+    if (!user) {
+      toast({
+        title: "Connexion requise",
+        description: "Veuillez vous connecter pour utiliser le mode en ligne.",
+        variant: "destructive",
+        duration: 3000,
+      });
+      return;
+    }
+    toggleOnlineMode(); // This now calls the function from AuthContext
     toast({
-      title: "Mode de Synchronisation",
-      description: "La fonctionnalité de basculement Hors ligne / En ligne et la synchronisation des données seront implémentées prochainement.",
+      title: `Mode ${isOnline ? 'Hors Ligne' : 'En Ligne'} Activé`,
+      description: `Les données seront maintenant ${isOnline ? 'sauvegardées localement.' : 'synchronisées avec le serveur.'} (Logique de synchro à venir)`,
       duration: 5000,
     });
   };
@@ -41,7 +46,6 @@ export function MagicHeader() {
         title: "Déconnecté",
         description: "Vous avez été déconnecté avec succès.",
       });
-      // No explicit redirect here, onAuthStateChange should handle UI updates.
     }
   };
 
@@ -59,7 +63,6 @@ export function MagicHeader() {
         <>
           <div className="flex items-center gap-2">
             <Avatar className="h-8 w-8">
-              {/* Potential future: <AvatarImage src={user.user_metadata?.avatar_url} alt={user.email || 'User Avatar'} /> */}
               <AvatarFallback>
                 {user.email ? user.email.charAt(0).toUpperCase() : <UserCircle2 size={20}/>}
               </AvatarFallback>
@@ -98,7 +101,6 @@ export function MagicHeader() {
         <>
           <div className="flex items-center gap-3 p-2 border-b mb-2">
             <Avatar className="h-10 w-10">
-               {/* Potential future: <AvatarImage src={user.user_metadata?.avatar_url} alt={user.email || 'User Avatar'} /> */}
               <AvatarFallback>
                 {user.email ? user.email.charAt(0).toUpperCase() : <UserCircle2 size={24}/>}
               </AvatarFallback>
@@ -142,13 +144,13 @@ export function MagicHeader() {
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={toggleOnlineStatus} 
-            title={isOnlineForDisplay ? "Mode actuel : En Ligne (cliquer pour détails)" : "Mode actuel : Hors Ligne (cliquer pour détails)"}
+            onClick={handleToggleOnlineStatus}
+            title={isOnline ? "Mode actuel : En Ligne (cliquer pour passer Hors Ligne)" : "Mode actuel : Hors Ligne (cliquer pour passer En Ligne)"}
             className="w-32"
-            disabled={!user} // Disable if not logged in, as "Online" implies being logged in
+            disabled={!user || loading} // Disable if not logged in or auth is loading
           >
-            {isOnlineForDisplay ? <Wifi className="mr-2 h-4 w-4" /> : <WifiOff className="mr-2 h-4 w-4 text-muted-foreground" />}
-            {isOnlineForDisplay ? 'En Ligne' : 'Hors Ligne'}
+            {isOnline ? <Wifi className="mr-2 h-4 w-4" /> : <WifiOff className="mr-2 h-4 w-4 text-muted-foreground" />}
+            {isOnline ? 'En Ligne' : 'Hors Ligne'}
           </Button>
         </nav>
 
@@ -156,12 +158,12 @@ export function MagicHeader() {
            <Button 
             variant="ghost" 
             size="icon" 
-            onClick={toggleOnlineStatus} 
-            title={isOnlineForDisplay ? "Mode actuel : En Ligne" : "Mode actuel : Hors Ligne"}
-            disabled={!user} // Disable if not logged in
+            onClick={handleToggleOnlineStatus}
+            title={isOnline ? "Mode En Ligne" : "Mode Hors Ligne"}
+            disabled={!user || loading}
           >
-            {isOnlineForDisplay ? <Wifi className="h-5 w-5" /> : <WifiOff className="h-5 w-5 text-muted-foreground" />}
-            <span className="sr-only">{isOnlineForDisplay ? 'Mode En Ligne' : 'Mode Hors Ligne'}</span>
+            {isOnline ? <Wifi className="h-5 w-5" /> : <WifiOff className="h-5 w-5 text-muted-foreground" />}
+            <span className="sr-only">{isOnline ? 'Passer Hors Ligne' : 'Passer En Ligne'}</span>
           </Button>
           <Sheet>
             <SheetTrigger asChild>
@@ -178,12 +180,4 @@ export function MagicHeader() {
                 </Link>
                </div>
               <nav className="flex flex-col space-y-3 px-4">
-                <AuthLinksMobile />
-              </nav>
-            </SheetContent>
-          </Sheet>
-        </div>
-      </div>
-    </header>
-  );
-}
+                <Auth

@@ -82,32 +82,38 @@
     - User executed `supabase_schema.sql` in their Supabase project.
 - **Database Integration (Phase 1: User Authentication)**:
     - Implemented Sign Up (`/auth/signup/page.tsx`) and Log In (`/auth/login/page.tsx`) pages with UI logic using ShadCN components, react-hook-form, Zod, and Supabase client methods.
-    - Created `AuthContext` (`src/contexts/AuthContext.tsx`) for session management (listens to `onAuthStateChange` from Supabase).
+    - Created `AuthContext` (`src/contexts/AuthContext.tsx`) for session management (listens to `onAuthStateChange` from Supabase). It also initializes `AppDataService` with user ID and manages a basic online/offline state.
     - Wrapped root layout in `AuthProvider`.
     - Updated `MagicHeader` (`src/components/common/magic-header.tsx`) to dynamically display:
         - "Connexion" and "Inscription" links when logged out.
         - User avatar (initials), email (desktop), and "Déconnexion" button when logged in.
         - Loading skeletons during auth state determination.
-    - The "Hors ligne / Online" button is now visually disabled if no user is logged in.
+    - The "Hors ligne / Online" button is now visually disabled if no user is logged in, and toggles a global state (though full sync logic is pending).
+- **Database Integration (Phase 2: Abstract Data Layer & Services - Started)**:
+    - Installed `dexie` library for IndexedDB management.
+    - Updated `src/types/index.ts` with comprehensive data models including `id`, `user_id`, `created_at`, `updated_at` and DTOs for creation.
+    - Defined service interfaces in `src/services/interfaces/` (`IService.ts`, `IPriorityTaskService.ts`, etc.).
+    - Created `src/services/indexeddb/db.ts` to set up Dexie database schema ("EasyGenieDB_v1").
+    - Implemented `PriorityTaskIndexedDBService` (`src/services/indexeddb/priority-task.indexeddb.service.ts`).
+    - Implemented `PriorityTaskSupabaseService` (`src/services/supabase/priority-task.supabase.service.ts`).
+    - Created initial structure for `AppDataService` (`src/services/appDataService.ts`) to orchestrate data operations, with placeholder online/offline logic and user ID management.
+    - `AuthContext` now initializes `AppDataService` with `userId` and a basic online/offline state toggle.
 
 ## To Do
 
 - **Database & Sync Implementation (High Priority)**:
-    - **Phase 2: Abstract Data Layer & Services**
-        - Define generic data service interface (e.g., `src/services/appDataService.ts`) and specific tool service interfaces (e.g., `IPriorityTaskService`).
-        - Implement IndexedDB providers for each tool service (e.g., using `idb` library).
-        - Implement Supabase providers for each tool service (queries must use `user_id`).
-        - Create combined `appDataService` with dynamic provider switching based on online/offline mode and auth state.
+    - **Phase 2: Abstract Data Layer & Services (Continue)**
+        - Implement IndexedDB and Supabase service providers for `RoutineService`, `BrainDumpService`, `TaskBreakerService`.
+        - Refine `AppDataService` to correctly use these services and manage the online/offline mode (currently a basic toggle).
     - **Phase 3: Integrate PriorityGrid with New Data Layer**
-        - Refactor `PriorityGridTool` to use `appDataService` instead of `localStorage`.
-        - Make "Hors ligne / Online" toggle functional, influencing `appDataService` mode.
+        - Refactor `PriorityGridTool` to use `AppDataService` instead of `localStorage`.
+        - Make "Hors ligne / Online" toggle fully functional within PriorityGrid, influencing `AppDataService` mode and data source.
     - **Phase 4: Synchronization Logic**
         - Implement logic for tracking local changes (dirty checking or pending sync log in IndexedDB).
         - Implement initial sync (login/switch to online): upload local, download remote, conflict resolution (e.g., last write wins based on `updated_at`).
         - Implement ongoing sync: attempt Supabase write first; if fails, queue locally.
         - Implement offline-to-online sync: process queue, fetch remote changes, resolve conflicts.
-        - Ensure all records have UUIDs and `created_at`/`updated_at` timestamps.
-    - **Phase 5: Integrate Other Tools** (TaskBreaker, RoutineBuilder, BrainDump) with `appDataService`.
+    - **Phase 5: Integrate Other Tools** (TaskBreaker, RoutineBuilder, BrainDump) with `AppDataService`.
     - **Phase 6: UI Feedback & Error Handling** for sync status, online/offline mode, and errors.
 - **PriorityGrid Tool Enhancements (Post-Database)**:
     - Implement a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
@@ -126,7 +132,7 @@
     - DecisionHelper (placeholder page exists)
     - MoodTracker (placeholder page exists)
     - FocusMode (placeholder page exists)
-- Flesh out "Étincelles" (Sparks) page content (or remove link if page is not planned).
+- Flesh out "Étincelles" (Sparks) page content.
 - Implement actual email sending for contact form.
 - Refine UI/UX across all tools, including responsive design, accessibility, loading states, and error handling for new features.
 - Add relevant image placeholders with `data-ai-hint` to all newly developed tool pages where appropriate.
