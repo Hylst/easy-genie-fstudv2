@@ -58,13 +58,18 @@
         - Added `Tooltip` components to clarify the purpose of quadrants and other input fields.
     - Implemented an "Edit Task" dialog to modify all task properties.
     - Task cards in the grid now display frequency, date, and time if set.
-    - All task data, including new properties, is saved to/loaded from `localStorage` (using key `PRIORITY_GRID_STORAGE_KEY_v1`).
+    - All task data, including new properties, is saved to/loaded from `localStorage` (using key `PRIORITY_GRID_STORAGE_KEY_TASKS_v1`).
     - Implemented a functional **Preset System**:
         - "Charger un Preset" button opens a dialog.
         - Dialog lists hardcoded, categorized presets using an Accordion for a tree-like structure.
         - Selecting a preset populates the "Add Task" form, expanding advanced options if needed.
         - Toast notification confirms preset loading.
         - Added more preset categories and items.
+- **PriorityGrid Tool Enhancements (Phase 1.5 - Custom Presets)**:
+    - Added "Sauvegarder comme Preset" button to save current task form details as a custom preset.
+    - Custom presets are named by the user via a dialog.
+    - Custom presets are saved to/loaded from `localStorage` (using key `PRIORITY_GRID_CUSTOM_PRESETS_KEY_v1`).
+    - Custom presets are displayed in the "Charger un Preset" dialog under a "Mes Presets Personnalisés" category.
 
 ## To Do
 
@@ -73,7 +78,7 @@
     - Develop a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
     - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
-    - **Critical**: Transition data storage from `localStorage` to **IndexedDB** for more robust and larger local storage capacity.
+    - **Critical**: Transition data storage from `localStorage` to **IndexedDB** for more robust and larger local storage capacity (for tasks and custom presets).
     - **Critical**: Plan and implement **Firebase (Firestore) integration** for remote data storage and synchronization (requires user authentication).
 - **User Authentication**: Implement user authentication (e.g., Firebase Auth) to enable personalized experiences and remote data storage.
 - **TaskBreaker Tool Enhancements**:
