@@ -88,34 +88,34 @@
         - "Connexion" and "Inscription" links when logged out.
         - User avatar (initials), email (desktop), and "Déconnexion" button when logged in.
         - Loading skeletons during auth state determination.
-    - The "Hors ligne / Online" button is now visually disabled if no user is logged in, and toggles a global state (though full sync logic is pending).
-- **Database Integration (Phase 2: Abstract Data Layer & Services - Started)**:
+    - The "Hors ligne / Online" button is now visually disabled if no user is logged in, and toggles a global state.
+- **Database Integration (Phase 2: Abstract Data Layer & Services - PriorityTask)**:
     - Installed `dexie` library for IndexedDB management.
-    - Updated `src/types/index.ts` with comprehensive data models including `id`, `user_id`, `created_at`, `updated_at` and DTOs for creation.
-    - Defined service interfaces in `src/services/interfaces/` (`IService.ts`, `IPriorityTaskService.ts`, etc.).
-    - Created `src/services/indexeddb/db.ts` to set up Dexie database schema ("EasyGenieDB_v1").
-    - Implemented `PriorityTaskIndexedDBService` (`src/services/indexeddb/priority-task.indexeddb.service.ts`).
-    - Implemented `PriorityTaskSupabaseService` (`src/services/supabase/priority-task.supabase.service.ts`).
-    - Created initial structure for `AppDataService` (`src/services/appDataService.ts`) to orchestrate data operations, with placeholder online/offline logic and user ID management.
-    - `AuthContext` now initializes `AppDataService` with `userId` and a basic online/offline state toggle.
+    - Updated `src/types/index.ts` with comprehensive data models including `id`, `user_id`, `created_at`, `updated_at` and DTOs for creation. Ensured `PriorityTask` includes `isCompleted`.
+    - Defined service interfaces in `src/services/interfaces/` (`IService.ts`, `IPriorityTaskService.ts`, `IRoutineService.ts`, `IBrainDumpService.ts`, `ITaskBreakerService.ts`).
+    - Updated `src/services/indexeddb/db.ts` to set up Dexie database schema ("EasyGenieDB_v1", version 2) for all entities, confirming `id` as primary key for UUIDs.
+    - Implemented `PriorityTaskIndexedDBService` (`src/services/indexeddb/priority-task.indexeddb.service.ts`) with full CRUD operations.
+    - Implemented `PriorityTaskSupabaseService` (`src/services/supabase/priority-task.supabase.service.ts`) with full CRUD operations, ensuring user_id filtering.
+    - Created/Updated `AppDataService` (`src/services/appDataService.ts`) to orchestrate data operations for `PriorityTask` based on online/offline state and user ID.
+    - Ensured `AuthContext` correctly initializes `AppDataService` with `userId` and current `isOnline` status, and updates `AppDataService` on changes.
 
 ## To Do
 
 - **Database & Sync Implementation (High Priority)**:
     - **Phase 2: Abstract Data Layer & Services (Continue)**
-        - Implement IndexedDB and Supabase service providers for `RoutineService`, `BrainDumpService`, `TaskBreakerService`.
-        - Refine `AppDataService` to correctly use these services and manage the online/offline mode (currently a basic toggle).
+        - Implement IndexedDB and Supabase service providers for `RoutineService`, `BrainDumpService`, `TaskBreakerService`, following the `PriorityTaskService` pattern.
+        - Refine `AppDataService` to include methods for these other services.
     - **Phase 3: Integrate PriorityGrid with New Data Layer**
-        - Refactor `PriorityGridTool` to use `AppDataService` instead of `localStorage`.
-        - Make "Hors ligne / Online" toggle fully functional within PriorityGrid, influencing `AppDataService` mode and data source.
+        - Refactor `PriorityGridTool` to use `AppDataService.getAllPriorityTasks()`, `AppDataService.addPriorityTask()`, etc., instead of `localStorage`.
+        - Make "Hors ligne / Online" toggle fully functional within PriorityGrid, influencing `AppDataService` mode and data source visibility/behavior.
     - **Phase 4: Synchronization Logic**
-        - Implement logic for tracking local changes (dirty checking or pending sync log in IndexedDB).
-        - Implement initial sync (login/switch to online): upload local, download remote, conflict resolution (e.g., last write wins based on `updated_at`).
-        - Implement ongoing sync: attempt Supabase write first; if fails, queue locally.
-        - Implement offline-to-online sync: process queue, fetch remote changes, resolve conflicts.
-    - **Phase 5: Integrate Other Tools** (TaskBreaker, RoutineBuilder, BrainDump) with `AppDataService`.
-    - **Phase 6: UI Feedback & Error Handling** for sync status, online/offline mode, and errors.
-- **PriorityGrid Tool Enhancements (Post-Database)**:
+        *   Implement logic for tracking local changes (dirty checking or pending sync log in IndexedDB when an online operation fails or when offline).
+        *   Implement initial sync (on login/switch to online): upload local changes, download remote changes, implement conflict resolution strategy (e.g., last write wins based on `updated_at`, or server/client priority).
+        *   Implement ongoing sync: attempt Supabase write first if online; if fails (e.g. network issue), queue locally with "pending_sync" status.
+        *   Implement offline-to-online sync: process pending_sync queue, fetch remote changes since last sync, resolve conflicts.
+    - **Phase 5: Integrate Other Tools** (TaskBreaker, RoutineBuilder, BrainDump) with `AppDataService` and the new data persistence layer.
+    - **Phase 6: UI Feedback & Error Handling** for sync status, online/offline mode transitions, and data operation errors across all tools.
+- **PriorityGrid Tool Enhancements (Post-Database Integration)**:
     - Implement a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
     - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
@@ -128,10 +128,7 @@
     *   Optional: Interactive execution mode (checking off steps as done for a specific day).
     - Refine voice input for editing existing step text (currently only appends).
 - Integrate Genkit AI more deeply into other existing tools (TimeFocus modes) to make the "magic level" (intensity) impact their behavior.
-- Implement remaining tools from `tool-grid.tsx` with their specific functionalities and intensity level integrations:
-    - DecisionHelper (placeholder page exists)
-    - MoodTracker (placeholder page exists)
-    - FocusMode (placeholder page exists)
+- Implement remaining tools from `tool-grid.tsx` (DecisionHelper, MoodTracker, FocusMode) with their specific functionalities, intensity level integrations, and database persistence.
 - Flesh out "Étincelles" (Sparks) page content.
 - Implement actual email sending for contact form.
 - Refine UI/UX across all tools, including responsive design, accessibility, loading states, and error handling for new features.

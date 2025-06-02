@@ -5,4 +5,5 @@ import type { IService } from './IService';
 
 export interface ITaskBreakerService extends IService<TaskBreakerTask, CreateTaskBreakerTaskDTO> {
   getTasksByParent(parentId: string | null, userId: string): Promise<TaskBreakerTask[]>;
-  
+  // May need methods to reorder tasks, etc.
+}
