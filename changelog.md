@@ -6,7 +6,7 @@
 - Initial project setup (NextJS, ShadCN, Tailwind, Genkit).
 - Basic layout (Header, Footer).
 - Homepage with Hero and ToolGrid.
-- Tool pages: TaskBreaker (basic client-side), TimeFocus, PriorityGrid, BrainDump (basic client-side logic and IntensitySelector).
+- Tool pages: TaskBreaker (basic client-side), TimeFocus, PriorityGrid (basic client-side), BrainDump (basic client-side logic and IntensitySelector).
 - Contact page (mock submission).
 - Legal pages (Privacy, Terms).
 - Sparks page (placeholder).
@@ -49,9 +49,24 @@
     - Added voice input for the main task field.
     - Sub-tasks (AI-generated or manual) are saved to/loaded from localStorage.
     - **Recursive Breakdown**: Implemented ability to break down any sub-task into further sub-sub-tasks, both manually and using AI. UI updated with indentation and controls for nested tasks. State management refactored to handle tree structure. LocalStorage updated to `TASK_BREAKER_STORAGE_KEY_SUBTASKS_v2` due to structure change.
+- **PriorityGrid Tool Enhancements (Phase 1)**:
+    - Updated `PriorityTask` interface to include optional `frequency`, `specificDate`, `specificTime`.
+    - Enhanced the "Add Task" form with inputs for these new properties (Select for frequency, Popover Calendar for date, input type="time" for time).
+    - Implemented an "Edit Task" dialog to modify all task properties.
+    - Task cards in the grid now display frequency, date, and time if set.
+    - All task data, including new properties, is saved to/loaded from `localStorage` (using key `PRIORITY_GRID_STORAGE_KEY_v1`).
+    - Added a placeholder button "Charger un Preset" with a "Coming Soon" toast.
 
 ## To Do
 
+- **PriorityGrid Tool Enhancements (Phase 2)**:
+    - Implement a basic client-side recurrence display logic (e.g., show "Due today" if daily and date matches).
+    - Develop a full client-side recurrence engine (managing completion cycles, auto-generating next instances).
+    - Implement a functional preset system (potentially with categories, initially hardcoded, later AI-driven).
+    - Integrate voice input for adding/editing tasks.
+    - Explore AI assistance for quadrant suggestion based on task text and intensity.
+    - Consider transitioning local storage from `localStorage` to IndexedDB for better structured data handling.
+    - Plan Firebase integration for remote data storage and synchronization (requires authentication).
 - **TaskBreaker Tool Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
@@ -60,7 +75,7 @@
     - Optional: Add specific time input for routines.
     - Optional: Interactive execution mode (checking off steps as done for a specific day).
     - Refine voice input for editing existing step text (currently only appends).
-- Integrate Genkit AI more deeply into other existing tools (TimeFocus modes, PriorityGrid classification help) to make the "magic level" (intensity) impact their behavior.
+- Integrate Genkit AI more deeply into other existing tools (TimeFocus modes) to make the "magic level" (intensity) impact their behavior.
 - Implement remaining tools from `tool-grid.tsx` with their specific functionalities and intensity level integrations:
     - DecisionHelper (placeholder page exists)
     - MoodTracker (placeholder page exists)
@@ -70,9 +85,9 @@
 - Implement actual email sending for contact form.
 - Refine UI/UX across all tools, including responsive design, accessibility, loading states, and error handling for new features.
 - Add relevant image placeholders with `data-ai-hint` to all newly developed tool pages where appropriate.
-- Store tool data for authenticated users (e.g., using Firestore).
+- Store tool data for authenticated users (e.g., using Firestore, once auth is in place).
 - Add tests (unit, integration).
 - Review and improve safety settings for Genkit flows.
-- **Voice Input**: Refine voice input for BrainDump, Formalizer. Fully implement for PriorityGrid, and new tools where applicable.
-    
+- **Voice Input**: Refine voice input for BrainDump, Formalizer. Fully implement for new tools where applicable.
+
 ```
