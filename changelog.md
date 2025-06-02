@@ -73,23 +73,26 @@
 - **Database Integration Planning (Phase 0 Started)**:
     - Installed `@supabase/supabase-js` library.
     - Added placeholder `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to `.env`.
-    - Added a placeholder "Hors ligne / Online" toggle button to the header (currently non-functional, shows a toast).
-    - Detailed plan for IndexedDB and Supabase integration outlined.
+    - Added a placeholder "Hors ligne / Online" toggle button to the header (shows a toast).
 - **Database Integration (Phase 0 Continued)**:
     - Removed "Outils (Lampe)" and "Étincelles" navigation buttons from header.
     - Updated `.env` with actual Supabase project URL and anon key.
     - Created `src/lib/supabaseClient.ts` to initialize and export the Supabase client.
     - Provided `supabase_schema.sql` for user to set up tables (brain_dumps, routines, routine_steps, task_breaker_tasks, priority_tasks) and RLS policies in their Supabase project.
+    - User executed `supabase_schema.sql` in their Supabase project.
+- **Database Integration (Phase 1: User Authentication)**:
+    - Implemented Sign Up (`/auth/signup`) and Log In (`/auth/login`) pages and UI logic using ShadCN components and Supabase client.
+    - Created `AuthContext` (`src/contexts/AuthContext.tsx`) for session management (listens to `onAuthStateChange` from Supabase).
+    - Wrapped root layout in `AuthProvider`.
+    - Updated `MagicHeader` (`src/components/common/magic-header.tsx`) to dynamically display:
+        - "Connexion" and "Inscription" links when logged out.
+        - User avatar (initials), email (desktop), and "Déconnexion" button when logged in.
+        - Loading skeletons during auth state determination.
+    - The "Hors ligne / Online" button is now visually disabled if no user is logged in.
 
 ## To Do
 
 - **Database & Sync Implementation (High Priority)**:
-    - **Phase 0 (User Action Required)**:
-        - **User to execute `supabase_schema.sql` in their Supabase project SQL Editor to create tables and RLS policies.**
-    - **Phase 1: User Authentication (Supabase)**
-        - Implement Sign Up, Log In, Log Out UI and logic.
-        - Create `AuthContext` for session management (listen to `onAuthStateChange`).
-        - Update `MagicHeader` for auth state (show login/logout, user info).
     - **Phase 2: Abstract Data Layer & Services**
         - Define generic data service interface (e.g., `src/services/appDataService.ts`) and specific tool service interfaces (e.g., `IPriorityTaskService`).
         - Implement IndexedDB providers for each tool service (e.g., using `idb` library).
@@ -130,3 +133,8 @@
 - Add tests (unit, integration).
 - Review and improve safety settings for Genkit flows.
 - **Voice Input**: Refine voice input for BrainDump, Formalizer. Fully implement for new tools where applicable.
+- **User Profile**: Consider a dedicated user profile page for managing account details (e.g., password change, profile picture if Supabase Storage is used).
+- **Email Confirmation**: Ensure "Confirm email" is enabled in Supabase project settings for production.
+- **Password Reset**: Implement a "Forgot Password" flow using Supabase's `sendPasswordResetEmail` and a page to handle the password update.
+
+```
