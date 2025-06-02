@@ -98,13 +98,21 @@
     - Implemented `PriorityTaskSupabaseService` (`src/services/supabase/priority-task.supabase.service.ts`) with full CRUD operations, ensuring user_id filtering.
     - Created/Updated `AppDataService` (`src/services/appDataService.ts`) to orchestrate data operations for `PriorityTask` based on online/offline state and user ID.
     - Ensured `AuthContext` correctly initializes `AppDataService` with `userId` and current `isOnline` status, and updates `AppDataService` on changes.
+- **Database Integration (Phase 2: Abstract Data Layer & Services - Continued for All Entities)**:
+    - Updated `src/types/index.ts` ensuring comprehensive DTOs for `Routine`, `RoutineStep`, `BrainDumpContent`, `TaskBreakerTask`.
+    - Implemented IndexedDB service providers:
+        - `RoutineIndexedDBService` (`src/services/indexeddb/routine.indexeddb.service.ts`) with full CRUD for routines and steps.
+        - `BrainDumpIndexedDBService` (`src/services/indexeddb/brain-dump.indexeddb.service.ts`) with full CRUD for brain dumps.
+        - `TaskBreakerIndexedDBService` (`src/services/indexeddb/task-breaker.indexeddb.service.ts`) with full CRUD for tasks, including parent-child relationships.
+    - Implemented Supabase service providers:
+        - `RoutineSupabaseService` (`src/services/supabase/routine.supabase.service.ts`) with full CRUD for routines and steps.
+        - `BrainDumpSupabaseService` (`src/services/supabase/brain-dump.supabase.service.ts`) with full CRUD for brain dumps.
+        - `TaskBreakerSupabaseService` (`src/services/supabase/task-breaker.supabase.service.ts`) with full CRUD for tasks.
+    - Expanded `AppDataService` (`src/services/appDataService.ts`) to include methods for `RoutineService`, `BrainDumpService`, and `TaskBreakerService`, routing calls to the appropriate local or remote service based on online status and user ID.
 
 ## To Do
 
 - **Database & Sync Implementation (High Priority)**:
-    - **Phase 2: Abstract Data Layer & Services (Continue)**
-        - Implement IndexedDB and Supabase service providers for `RoutineService`, `BrainDumpService`, `TaskBreakerService`, following the `PriorityTaskService` pattern.
-        - Refine `AppDataService` to include methods for these other services.
     - **Phase 3: Integrate PriorityGrid with New Data Layer**
         - Refactor `PriorityGridTool` to use `AppDataService.getAllPriorityTasks()`, `AppDataService.addPriorityTask()`, etc., instead of `localStorage`.
         - Make "Hors ligne / Online" toggle fully functional within PriorityGrid, influencing `AppDataService` mode and data source visibility/behavior.
@@ -122,6 +130,7 @@
 - **TaskBreaker Tool Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
+    - Ensure robust recursive deletion of child tasks in Supabase (currently relies on DB cascade or needs client-side recursion for Supabase service).
 - **RoutineBuilder Tool Enhancements (Phase 2)**:
     - Consider UI for reordering routines and steps.
     - Optional: Add specific time input for routines.
@@ -140,4 +149,3 @@
 - **Email Confirmation**: Ensure "Confirm email" is enabled in Supabase project settings for production.
 - **Password Reset**: Implement a "Forgot Password" flow using Supabase's `sendPasswordResetEmail` and a page to handle the password update.
 
-```

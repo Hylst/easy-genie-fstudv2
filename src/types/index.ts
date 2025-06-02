@@ -62,7 +62,7 @@ export interface Routine extends BaseEntity {
   name: string;
   description?: string;
   days: DayOfWeek[]; // Stored as an array of strings
-  // steps are now in RoutineStep table
+  // steps are related via routine_id in RoutineStep table/store
 }
 
 export interface BrainDumpContent extends BaseEntity {
@@ -72,25 +72,42 @@ export interface BrainDumpContent extends BaseEntity {
 }
 
 export interface TaskBreakerTask extends BaseEntity {
-  parent_id?: string | null; 
-  main_task_text_context?: string; 
+  parent_id?: string | null; // UUID of parent task, or null for root tasks related to a main concept
+  main_task_text_context?: string; // Optional: original main task text if this is a root-level subtask
   text: string;
   is_completed: boolean;
-  depth: number; 
-  order: number; 
+  depth: number; // 0 for direct children of a main task concept, 1 for children of those, etc.
+  order: number; // Order within its siblings
 }
 
 
 // --- DTOs for Create operations ---
-// These omit system-generated fields and user_id (which is passed separately or contextually)
+// These omit system-generated fields like id, user_id (passed separately), created_at, updated_at.
+// isCompleted and other optional fields may have defaults handled by services.
+
 export type CreatePriorityTaskDTO = Omit<PriorityTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'isCompleted'> & { isCompleted?: boolean };
+
 export type CreateRoutineDTO = Omit<Routine, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
-export type CreateRoutineStepDTO = Omit<RoutineStep, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'isCompleted'> & { isCompleted?: boolean };
+
+export type CreateRoutineStepDTO = Omit<RoutineStep, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'isCompleted'> & { 
+  isCompleted?: boolean;
+  routine_id: string; // Must be provided when creating a step
+  order: number; // Must be provided
+};
+
 export type CreateBrainDumpContentDTO = Omit<BrainDumpContent, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
-export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'is_completed' | 'depth'> & { is_completed?: boolean; depth?: number };
+
+export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'is_completed' | 'depth'> & { 
+  is_completed?: boolean; 
+  depth?: number; // Optional here, can be set by service based on parent
+  parent_id?: string | null;
+  main_task_text_context?: string;
+  order: number; // Must be provided
+};
 
 
 // For UI state, not directly for DB, might differ slightly (e.g. dates as Date objects)
+// These UI types are from previous iterations and might need review/removal if fully replaced by DB types
 export interface UIRoutine extends Omit<Routine, 'id' | 'user_id' | 'created_at' | 'updated_at'> {
   id: string; // For UI key
   user_id?: string; // Optional during creation
@@ -106,3 +123,4 @@ export interface UIRoutineStep extends Omit<RoutineStep, 'id' | 'user_id' | 'cre
   text: string;
   isCompleted: boolean;
 }
+
