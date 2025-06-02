@@ -48,19 +48,22 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
     if (!userId) {
         throw new Error("PriorityTaskSupabaseService.add: userId is required to add a task.");
     }
-    // Explicitly use snake_case for is_completed as a diagnostic step
-    const { isCompleted, ...restTaskData } = taskData;
+    
     const taskPayload: any = {
-      ...restTaskData,
+      text: taskData.text,
+      quadrant: taskData.quadrant,
+      frequency: taskData.frequency,
+      specific_date: taskData.specificDate,
+      specific_time: taskData.specificTime,
       user_id: userId,
-      is_completed: isCompleted ?? false, // Explicitly use snake_case key
+      is_completed: taskData.isCompleted ?? false, 
     };
     
     console.log("Attempting to add to Supabase (priority_tasks) with explicit snake_case payload:", JSON.stringify(taskPayload, null, 2));
 
     const { data, error } = await supabase
       .from(this.tableName)
-      .insert(taskPayload) // Send the payload with is_completed
+      .insert(taskPayload)
       .select()
       .single();
 
@@ -91,51 +94,102 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
 
   async update(id: string, taskData: Partial<CreatePriorityTaskDTO>, userId: string): Promise<PriorityTask> {
     if (!userId) {
-        throw new Error("PriorityTaskSupabaseService.update: userId is required to update a task.");
+      throw new Error("PriorityTaskSupabaseService.update: userId is required to update a task.");
     }
-    // Explicitly use snake_case for is_completed if present in taskData
-    const { user_id: ignoredUserIdInDTO, isCompleted, ...restOfTaskData } = taskData as any; 
+
+    const { user_id: ignoredUserIdInDTO, // Ensure user_id from DTO is not used
+            specificDate, 
+            specificTime, 
+            isCompleted, // camelCase from DTO
+            ...restOfTaskData } = taskData;
 
     const taskToUpdate: any = {
-      ...restOfTaskData,
+      ...restOfTaskData, // other fields like text, quadrant, frequency
     };
-    if (isCompleted !== undefined) { // Only include is_completed if it's part of the update
-        taskToUpdate.is_completed = isCompleted;
+
+    if (specificDate !== undefined) {
+      taskToUpdate.specific_date = specificDate;
+    }
+    if (specificTime !== undefined) {
+      taskToUpdate.specific_time = specificTime;
+    }
+    if (isCompleted !== undefined) {
+      taskToUpdate.is_completed = isCompleted; // Use snake_case for the payload
     }
     
-    console.log(`Attempting to update task ${id} in Supabase (priority_tasks) with explicit snake_case payload:`, JSON.stringify(taskToUpdate, null, 2));
-    
-    const { data, error } = await supabase
+    console.log(`Attempting to update task ${id} in Supabase (priority_tasks) with payload:`, JSON.stringify(taskToUpdate, null, 2));
+
+    const { error: updateError, count } = await supabase
       .from(this.tableName)
       .update(taskToUpdate)
       .eq('id', id)
+      .eq('user_id', userId);
+
+    if (updateError) {
+      let errorMessage = `Error updating priority task ${id} in Supabase.`;
+      let errorDetails = "";
+      if (updateError && typeof updateError === 'object') {
+          if ('message' in updateError && typeof updateError.message === 'string') {
+              errorMessage = updateError.message;
+          }
+          try {
+              errorDetails = JSON.stringify(updateError);
+              console.error("Full Supabase error object (JSON) for update operation:", errorDetails);
+          } catch (e) {
+              console.error("Could not stringify the full Supabase error object for update operation.");
+          }
+      }
+      console.error(`Error during Supabase update operation for task ${id}:`, errorMessage, "Original error object:", updateError);
+      const customError = new Error(`Supabase update operation failed for task ${id}: ${errorMessage}${errorDetails ? ` (Details: ${errorDetails})` : ''}`);
+      (customError as any).originalError = updateError;
+      throw customError;
+    }
+
+    if (count === 0) {
+      const notFoundMsg = `Update matched 0 rows for task with id ${id} and user ${userId}. Task may not exist or RLS prevents update.`;
+      console.warn(notFoundMsg);
+      // It's crucial to throw an error here, as handleOnlineOperation expects the updated entity.
+      // If 0 rows were updated, we can't fetch the "updated" entity.
+      const customError = new Error(notFoundMsg);
+      (customError as any).code = 'PGRST116_ZERO_ROWS_AFFECTED'; // Custom code to signify this situation
+      throw customError;
+    }
+
+    // If update was successful (count > 0), now fetch the updated row to get the server's timestamp etc.
+    const { data: updatedTaskData, error: selectError } = await supabase
+      .from(this.tableName)
+      .select('*')
+      .eq('id', id)
       .eq('user_id', userId)
-      .select()
       .single();
 
-    if (error) {
-        let errorMessage = `Unknown error updating priority task ${id} in Supabase.`;
-         let errorDetails = "";
-        if (error && typeof error === 'object') {
-            if ('message' in error && typeof error.message === 'string') {
-                errorMessage = error.message;
-            }
-             try {
-                errorDetails = JSON.stringify(error);
-                console.error("Full Supabase error object (JSON) for update:", errorDetails);
-            } catch (e) {
-                console.error("Could not stringify the full Supabase error object for update.");
-            }
-        }
-        console.error(`Error updating priority task ${id} in Supabase (summary):`, errorMessage, "Original error object:", error);
-        const customError = new Error(`Supabase update failed for task ${id}: ${errorMessage}${errorDetails ? ` (Details: ${errorDetails})` : ''}`);
-        (customError as any).originalError = error;
-        throw customError;
+    if (selectError) {
+      let errorMessage = `Error fetching updated task ${id} after successful update confirmation.`;
+      let errorDetails = "";
+       if (selectError && typeof selectError === 'object') {
+          if ('message' in selectError && typeof selectError.message === 'string') {
+              errorMessage = selectError.message;
+          }
+          try {
+              errorDetails = JSON.stringify(selectError);
+              console.error("Full Supabase error object (JSON) for select after update:", errorDetails);
+          } catch (e) {
+              console.error("Could not stringify the full Supabase error object for select after update.");
+          }
+      }
+      console.error(`${errorMessage} Supabase select error for task ${id}:`, selectError.message, "Original error object:", selectError);
+      const customError = new Error(`${errorMessage} Supabase select error: ${selectError.message}${errorDetails ? ` (Details: ${errorDetails})` : ''}`);
+      (customError as any).originalError = selectError;
+      throw customError;
     }
-    if (!data) {
-        throw new Error(`Failed to update priority task ${id} in Supabase, no data returned or task not found for user.`);
+    
+    if (!updatedTaskData) {
+        // This case should ideally not be reached if count > 0 and selectError is null.
+        // It's a safeguard.
+        throw new Error(`Failed to fetch updated task ${id} after successful update, no data returned, though ${count} rows were reported as updated.`);
     }
-    return data as PriorityTask;
+
+    return updatedTaskData as PriorityTask;
   }
 
   async delete(id: string, userId: string): Promise<void> {
@@ -171,10 +225,11 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
 
     if (count === 0) {
         console.warn(`Supabase delete for task ${id} (user ${userId}) affected 0 rows. The task might have already been deleted, or RLS policies might be preventing deletion for this user, or the task ID/user ID combination doesn't exist.`);
-        // Consider if an error should be thrown here if count is 0,
-        // as it means the server didn't confirm a deletion.
-        // For now, if Supabase client reports no error, we proceed.
-        // The sync reconciliation logic should handle cases where the item reappears.
+        // For delete, if 0 rows are affected, it might not be a hard error for the client flow,
+        // as the item effectively doesn't exist on the server from this user's perspective.
+        // The sync reconciliation should eventually remove it locally if it was soft-deleted.
+        // However, if the expectation is that it *must* exist to be deleted, an error could be thrown here.
+        // For now, we'll log a warning and let the flow proceed (e.g., local hard delete).
     }
   }
 }
