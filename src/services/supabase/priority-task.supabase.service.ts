@@ -73,9 +73,9 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
             }
             try {
                 errorDetails = JSON.stringify(error);
-                console.error("Full Supabase error object (JSON):", errorDetails);
+                console.error("Full Supabase error object (JSON) for add:", errorDetails);
             } catch (e) {
-                console.error("Could not stringify the full Supabase error object.");
+                console.error("Could not stringify the full Supabase error object for add.");
             }
         }
         console.error("Error adding priority task to Supabase (summary):", errorMessage, "Original error object:", error);
@@ -143,7 +143,7 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
         throw new Error("PriorityTaskSupabaseService.delete: userId is required to delete a task.");
     }
     console.log(`Attempting to delete task ${id} from Supabase (priority_tasks) for user ${userId}`);
-    const { error } = await supabase
+    const { error, count } = await supabase
       .from(this.tableName)
       .delete()
       .eq('id', id)
@@ -167,6 +167,14 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
         const customError = new Error(`Supabase delete failed for task ${id}: ${errorMessage}${errorDetails ? ` (Details: ${errorDetails})` : ''}`);
         (customError as any).originalError = error;
         throw customError;
+    }
+
+    if (count === 0) {
+        console.warn(`Supabase delete for task ${id} (user ${userId}) affected 0 rows. The task might have already been deleted, or RLS policies might be preventing deletion for this user, or the task ID/user ID combination doesn't exist.`);
+        // Consider if an error should be thrown here if count is 0,
+        // as it means the server didn't confirm a deletion.
+        // For now, if Supabase client reports no error, we proceed.
+        // The sync reconciliation logic should handle cases where the item reappears.
     }
   }
 }
