@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
-import { Play, Pause, RotateCcw, BellRing, SkipForward, Brain, Coffee, ListChecks, Save, Trash2, Loader2 } from 'lucide-react';
+import { Play, Pause, RotateCcw, BellRing, SkipForward, Brain, Coffee, ListChecks, Save, Trash2, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { Progress } from "@/components/ui/progress";
 import { Label } from '@/components/ui/label';
 import { useToast } from "@/hooks/use-toast";
@@ -46,14 +46,16 @@ interface TimerState {
   pomodorosInCycle: number;
   currentPomodoroCycle: number;
   totalPomodorosCompleted: number;
-  lastTickPlayedAt: number; // timestamp of last 5-min tick
-  halfwayNotified: boolean; // to ensure halfway sound plays only once per session
+  lastTickPlayedAt: number; 
+  halfwayNotified: boolean; 
 }
 
 const DEFAULT_WORK_DURATION_MIN = 25;
 const DEFAULT_SHORT_BREAK_DURATION_MIN = 5;
 const DEFAULT_LONG_BREAK_DURATION_MIN = 15;
 const DEFAULT_POMODOROS_PER_CYCLE = 4;
+
+const SOUND_ENABLED_KEY = "easyGenieTimeFocusSoundEnabled_v1";
 
 const systemTimeFocusPresets: TimeFocusSystemPreset[] = [
   { id: 's_classic', name: "Pomodoro Classique", work: 25, short: 5, long: 15, cycle: 4 },
@@ -66,6 +68,7 @@ const systemTimeFocusPresets: TimeFocusSystemPreset[] = [
 export function TimeFocusTool() {
   const [intensity, setIntensity] = useState<number>(3);
   const [taskName, setTaskName] = useState<string>('');
+  const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(true);
 
   const [configWorkDuration, setConfigWorkDuration] = useState<number>(DEFAULT_WORK_DURATION_MIN);
   const [configShortBreakDuration, setConfigShortBreakDuration] = useState<number>(DEFAULT_SHORT_BREAK_DURATION_MIN);
@@ -98,6 +101,21 @@ export function TimeFocusTool() {
   const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedSoundPreference = localStorage.getItem(SOUND_ENABLED_KEY);
+      if (savedSoundPreference !== null) {
+        setIsSoundEnabled(JSON.parse(savedSoundPreference));
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(SOUND_ENABLED_KEY, JSON.stringify(isSoundEnabled));
+    }
+  }, [isSoundEnabled]);
+
 
   const fetchUserPresets = useCallback(async () => {
     if (!user) {
@@ -120,7 +138,6 @@ export function TimeFocusTool() {
     fetchUserPresets();
   }, [fetchUserPresets, isOnline]);
 
-  // Initialize AudioContext
   useEffect(() => {
     if (typeof window !== 'undefined' && !audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -132,13 +149,14 @@ export function TimeFocusTool() {
     };
   }, []);
 
-  const playGeneratedSound = useCallback((type: 'tick' | 'halfway' | 'endBell') => {
+  const playGeneratedSound = useCallback((type: 'tick' | 'halfway' | 'endBell' | 'startRace') => {
+    if (!isSoundEnabled) return;
     const ac = audioContextRef.current;
     if (!ac || ac.state === 'suspended') {
-      ac?.resume(); // Attempt to resume if suspended
+      ac?.resume(); 
     }
     if (!ac || ac.state !== 'running') {
-        console.warn("AudioContext not running. Sound not played.");
+        console.warn("AudioContext not running. Sound not played for type:", type);
         return;
     }
 
@@ -149,67 +167,37 @@ export function TimeFocusTool() {
     let attackTime = 0.01;
     let decayTime = 0.09;
 
-    const gainNode = ac.createGain();
-    gainNode.connect(ac.destination);
-
+    const createTone = (freq: number, dur: number, vol: number, oscType: OscillatorType = 'sine', atk: number = 0.01, dcy: number = 0.09, startTimeOffset: number = 0) => {
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = oscType;
+      osc.frequency.setValueAtTime(freq, ac.currentTime + startTimeOffset);
+      gain.gain.setValueAtTime(0, ac.currentTime + startTimeOffset);
+      gain.gain.linearRampToValueAtTime(vol, ac.currentTime + startTimeOffset + atk);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + startTimeOffset + dur);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start(ac.currentTime + startTimeOffset);
+      osc.stop(ac.currentTime + startTimeOffset + dur);
+    };
+    
     if (type === 'tick') {
-      oscillatorType = 'triangle';
-      frequency = 1000;
-      duration = 0.05;
-      decayTime = 0.04;
-      volume = 0.3;
+      createTone(1000, 0.05, 0.3, 'triangle', 0.01, 0.04);
     } else if (type === 'halfway') {
-      oscillatorType = 'square';
-      frequency = 600;
-      duration = 0.15;
-      decayTime = 0.1;
-      volume = 0.4;
+      createTone(600, 0.15, 0.4, 'square', 0.01, 0.1);
     } else if (type === 'endBell') {
-      oscillatorType = 'sine';
-      frequency = 880; // A5
-      duration = 0.8;  // Longer sound for a bell
-      attackTime = 0.01;
-      decayTime = 0.7; // Longer decay
-      volume = 0.6;
-
-      // Simple bell: main tone
-      const osc1 = ac.createOscillator();
-      osc1.type = oscillatorType;
-      osc1.frequency.setValueAtTime(frequency, ac.currentTime);
-      gainNode.gain.setValueAtTime(0, ac.currentTime);
-      gainNode.gain.linearRampToValueAtTime(volume, ac.currentTime + attackTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + duration);
-      osc1.connect(gainNode);
-      osc1.start(ac.currentTime);
-      osc1.stop(ac.currentTime + duration);
-
-      // Add a second oscillator for a more "bell-like" harmonic (optional)
-      const osc2 = ac.createOscillator();
-      osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(frequency * 1.5, ac.currentTime); // Fifth above
-      const gainNode2 = ac.createGain();
-      gainNode2.gain.setValueAtTime(0, ac.currentTime);
-      gainNode2.gain.linearRampToValueAtTime(volume * 0.4, ac.currentTime + attackTime * 1.2);
-      gainNode2.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + duration * 0.8);
-      osc2.connect(gainNode2);
-      gainNode2.connect(ac.destination);
-      osc2.start(ac.currentTime);
-      osc2.stop(ac.currentTime + duration * 0.8);
-      return; // Return early as bell sound is more complex
+      createTone(880, 0.8, 0.6, 'sine', 0.01, 0.7); // Main tone
+      createTone(880 * 1.5, 0.64, 0.24, 'triangle', 0.012, 0.56, 0.01); // Harmonic
+    } else if (type === 'startRace') {
+      // "tu - tu - tu - tuuuuu"
+      // 3 short beeps
+      createTone(800, 0.1, 0.4, 'square', 0.01, 0.08, 0);
+      createTone(800, 0.1, 0.4, 'square', 0.01, 0.08, 0.2);
+      createTone(800, 0.1, 0.4, 'square', 0.01, 0.08, 0.4);
+      // 1 long beep
+      createTone(600, 0.5, 0.5, 'sine', 0.01, 0.4, 0.6);
     }
-
-    const oscillator = ac.createOscillator();
-    oscillator.type = oscillatorType;
-    oscillator.frequency.setValueAtTime(frequency, ac.currentTime);
-
-    gainNode.gain.setValueAtTime(0, ac.currentTime);
-    gainNode.gain.linearRampToValueAtTime(volume, ac.currentTime + attackTime);
-    gainNode.gain.linearRampToValueAtTime(0, ac.currentTime + attackTime + decayTime);
-
-    oscillator.connect(gainNode);
-    oscillator.start(ac.currentTime);
-    oscillator.stop(ac.currentTime + duration);
-  }, []);
+  }, [isSoundEnabled]);
 
 
   const getCurrentModeFullDuration = useCallback(() => {
@@ -235,43 +223,32 @@ export function TimeFocusTool() {
 
     if (timerState.currentMode === 'work') {
       newTotalPomodorosCompleted++;
-      if (newTotalPomodorosCompleted % timerState.pomodorosInCycle === 0) {
+      if (newTotalPomodorosCompleted % timerState.pomodorosInCycle === 0 && intensity > 2) { // Long break only for Pomodoro modes
         nextMode = 'longBreak';
         newTimeLeft = configLongBreakDuration * 60;
         dialogTitle = "Cycle Terminé ! Pause Longue Méritée !";
         dialogDescription = `Vous avez complété ${timerState.pomodorosInCycle} sessions. Prenez une pause de ${configLongBreakDuration} minutes.`;
-      } else {
+      } else if (intensity > 1) { // Short break for Pomodoro or light Pomodoro
         nextMode = 'shortBreak';
         newTimeLeft = configShortBreakDuration * 60;
         dialogTitle = "Session de Travail Terminée !";
         dialogDescription = `Bravo ! Prenez une petite pause de ${configShortBreakDuration} minutes.`;
+      } else { // Simple Timer
+        nextMode = 'work'; // Reset to work for simple timer
+        newTimeLeft = configWorkDuration * 60;
+        dialogTitle = "Temps écoulé !";
+        dialogDescription = "Votre session de concentration est terminée.";
+        newCurrentPomodoroCycle = 1;
+        newTotalPomodorosCompleted = 0;
       }
-      newCurrentPomodoroCycle = timerState.currentPomodoroCycle < timerState.pomodorosInCycle ? timerState.currentPomodoroCycle + 1 : 1;
-    } else {
+      newCurrentPomodoroCycle = (intensity > 1 && newTotalPomodorosCompleted % timerState.pomodorosInCycle !== 0) ? timerState.currentPomodoroCycle + 1 : 1;
+    } else { // Break ended
       nextMode = 'work';
       newTimeLeft = configWorkDuration * 60;
       dialogTitle = "Pause Terminée !";
       dialogDescription = `Retour au travail pour une session de ${configWorkDuration} minutes.`;
     }
-
-    if (intensity <= 2) {
-      dialogTitle = "Temps écoulé !";
-      dialogDescription = "Votre session de concentration est terminée.";
-       setTimerState(prev => ({
-        ...prev,
-        isRunning: false,
-        timeLeft: configWorkDuration * 60, // Use current configWorkDuration
-        currentMode: 'work',
-        currentPomodoroCycle: 1,
-        totalPomodorosCompleted: 0,
-        lastTickPlayedAt: 0,
-        halfwayNotified: false,
-      }));
-       setCompletionMessage({ title: dialogTitle, description: dialogDescription });
-       setShowCompletionDialog(true);
-      return;
-    }
-
+    
     setCompletionMessage({ title: dialogTitle, description: dialogDescription });
     setShowCompletionDialog(true);
 
@@ -295,7 +272,7 @@ export function TimeFocusTool() {
         setTimerState(prev => ({ ...prev, timeLeft: newTimeLeft }));
 
         const fullDuration = getCurrentModeFullDuration();
-        if (newTimeLeft > 0 && newTimeLeft % (5 * 60) === 0 && newTimeLeft !== timerState.lastTickPlayedAt) {
+        if (newTimeLeft > 0 && newTimeLeft % (5 * 60) === 0 && newTimeLeft !== timerState.lastTickPlayedAt && newTimeLeft < fullDuration -1) { // Avoid tick at very start or end
           playGeneratedSound('tick');
           setTimerState(prev => ({...prev, lastTickPlayedAt: newTimeLeft}));
         }
@@ -315,50 +292,42 @@ export function TimeFocusTool() {
 
 
   useEffect(() => {
-    let workMin = configWorkDuration; // Start with current config
+    let workMin = configWorkDuration;
     let shortMin = configShortBreakDuration;
     let longMin = configLongBreakDuration;
     let cycleCount = configPomodorosPerCycle;
 
-    if (intensity === 1 || intensity === 2) {
-        // For simple timer, workMin is already set by config.
-        // For light pomodoro, use fixed values unless user has configured something else for intensity 4+
-        if (intensity === 2) { // More specific for light pomodoro, if not yet configured by user
-            workMin = configWorkDuration === DEFAULT_WORK_DURATION_MIN ? 25 : configWorkDuration;
-            shortMin = configShortBreakDuration === DEFAULT_SHORT_BREAK_DURATION_MIN ? 5 : configShortBreakDuration;
-            longMin = configLongBreakDuration === DEFAULT_LONG_BREAK_DURATION_MIN ? 15 : configLongBreakDuration;
-            cycleCount = configPomodorosPerCycle === DEFAULT_POMODOROS_PER_CYCLE ? 4 : configPomodorosPerCycle;
-        }
+    if (intensity === 1) { // Simple Timer - use current work config
+        workMin = configWorkDuration;
+        // No breaks or cycles for simple timer mode by default
+    } else if (intensity === 2) { // Light Pomodoro
+        workMin = 25; shortMin = 5; longMin = 15; cycleCount = 4;
     } else if (intensity === 3) { // Standard Pomodoro
         workMin = 25; shortMin = 5; longMin = 15; cycleCount = 4;
-    } else if (intensity >= 4) { // Configurable Pomodoro / Hyperfocus
-        // Values are set by user input or loaded preset for these levels
-        // For Hyperfocus, slightly adjust defaults if not specifically configured by user
-        if (intensity === 5) {
-            workMin = Math.max(configWorkDuration, 45); // Encourage longer
-            shortMin = Math.min(configShortBreakDuration, 5); // Encourage shorter
-            longMin = Math.min(configLongBreakDuration, 10);
-            cycleCount = Math.max(configPomodorosPerCycle, 2); // Maybe fewer cycles before long break if sessions are very long
-        }
+    } else if (intensity === 4) { // Configurable Pomodoro
+        // Values are set by user input or loaded preset
+        // No changes to config values here, just use what's in state
+    } else if (intensity === 5) { // Hyperfocus - use current config or suggest longer
+        workMin = Math.max(configWorkDuration, 45);
+        shortMin = Math.min(configShortBreakDuration, 5);
+        longMin = Math.min(configLongBreakDuration, 10);
+        cycleCount = Math.max(configPomodorosPerCycle, 2);
     }
 
-    // Apply these defaults only if timer is not running,
-    // or if the intensity change dictates an override for non-configurable modes.
     if (!timerState.isRunning) {
-        if (intensity < 4) { // Modes where config is driven by intensity
+        if (intensity < 4) { // Apply defaults for non-configurable modes
             setConfigWorkDuration(workMin);
             setConfigShortBreakDuration(shortMin);
             setConfigLongBreakDuration(longMin);
             setConfigPomodorosPerCycle(cycleCount);
         }
-        // Always update timeLeft and cycle count based on the determined durations for the current mode.
+        
         let newTimeLeft;
-        switch(timerState.currentMode){
-            case 'shortBreak': newTimeLeft = (intensity < 4 ? shortMin : configShortBreakDuration) * 60; break;
-            case 'longBreak': newTimeLeft = (intensity < 4 ? longMin : configLongBreakDuration) * 60; break;
-            default: newTimeLeft = (intensity < 4 ? workMin : configWorkDuration) * 60;
-        }
-
+        const currentModeDurationBasis = timerState.currentMode === 'work' ? (intensity < 4 ? workMin : configWorkDuration)
+                                      : timerState.currentMode === 'shortBreak' ? (intensity < 4 ? shortMin : configShortBreakDuration)
+                                      : (intensity < 4 ? longMin : configLongBreakDuration);
+        newTimeLeft = currentModeDurationBasis * 60;
+        
         setTimerState(prev => ({
             ...prev,
             timeLeft: newTimeLeft,
@@ -367,33 +336,38 @@ export function TimeFocusTool() {
             halfwayNotified: false,
         }));
     }
-  }, [intensity, timerState.isRunning, timerState.currentMode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intensity, timerState.isRunning, timerState.currentMode]); // config durations removed to prevent loops but allow intensity to drive defaults
 
 
   const handleStartPause = () => {
     if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
         audioContextRef.current.resume();
     }
-    if (timerState.timeLeft === 0 && !timerState.isRunning) {
+    if (timerState.timeLeft === 0 && !timerState.isRunning) { // Starting a new session after completion dialog
       setShowCompletionDialog(false);
+      if (timerState.currentMode === 'work') playGeneratedSound('startRace');
       setTimerState(prev => ({ ...prev, isRunning: true, lastTickPlayedAt: prev.timeLeft, halfwayNotified: false }));
-    } else {
+    } else if (!timerState.isRunning && timerState.currentMode === 'work' && timerState.timeLeft === configWorkDuration * 60){ // Starting a fresh work session
+      playGeneratedSound('startRace');
+      setTimerState(prev => ({ ...prev, isRunning: !prev.isRunning }));
+    } else { // General start/pause toggle
       setTimerState(prev => ({ ...prev, isRunning: !prev.isRunning }));
     }
   };
 
   const handleReset = () => {
     if (timerId.current) clearTimeout(timerId.current);
-    const initialTimeLeft = (intensity < 4 && intensity !== 1 ? (intensity === 3 ? 25 : configWorkDuration) : configWorkDuration) * 60;
+    const initialWorkDuration = intensity < 4 && intensity !== 1 ? (intensity === 3 ? 25 : configWorkDuration) : configWorkDuration;
 
     setTimerState({
       isRunning: false,
-      timeLeft: initialTimeLeft,
+      timeLeft: initialWorkDuration * 60,
       currentMode: 'work',
       pomodorosInCycle: (intensity < 4 ? (intensity === 3 ? 4 : configPomodorosPerCycle) : configPomodorosPerCycle),
       currentPomodoroCycle: 1,
       totalPomodorosCompleted: 0,
-      lastTickPlayedAt: initialTimeLeft,
+      lastTickPlayedAt: initialWorkDuration * 60,
       halfwayNotified: false,
     });
     setShowCompletionDialog(false);
@@ -521,11 +495,18 @@ export function TimeFocusTool() {
     }))
   ];
 
+  const handleToggleSound = () => {
+    setIsSoundEnabled(prev => !prev);
+    toast({ title: `Sons ${!isSoundEnabled ? "activés" : "désactivés"}` });
+  };
+
+  const isConfigEditable = !timerState.isRunning && intensity >= 4;
+
   return (
     <Card className="w-full max-w-lg mx-auto shadow-xl text-center">
       <CardHeader>
         <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
-            <div className="flex-grow">
+            <div className="flex-grow text-left md:text-center">
                 <CardTitle className="text-3xl font-bold text-primary">TimeFocus Magique</CardTitle>
                 <CardDescription>
                   {getIntensityDescription()}
@@ -537,48 +518,7 @@ export function TimeFocusTool() {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div>
-          <Label htmlFor="taskName">Nom de la tâche (optionnel) :</Label>
-          <Input
-            id="taskName"
-            type="text"
-            value={taskName}
-            onChange={(e) => setTaskName(e.target.value)}
-            placeholder="Sur quoi travaillez-vous ?"
-            className="mt-1 transition-all duration-200 ease-in-out hover:shadow-lg hover:animate-subtle-shake transform hover:scale-[1.01]"
-            disabled={timerState.isRunning}
-          />
-        </div>
-
-        {(intensity >= 4) && (
-          <Card className="p-4 bg-muted/50">
-            <CardTitle className="text-md mb-3 text-center">Configuration Pomodoro Personnalisée</CardTitle>
-            <div className="grid grid-cols-2 gap-4 items-end">
-              <div>
-                <Label htmlFor="workDurationConfig" className="text-xs">Travail (min)</Label>
-                <Input id="workDurationConfig" type="number" value={configWorkDuration} onChange={e => {setConfigWorkDuration(Math.max(1, +e.target.value)); if(!timerState.isRunning && timerState.currentMode === 'work') setTimerState(p => ({...p, timeLeft: Math.max(1, +e.target.value) * 60, lastTickPlayedAt: Math.max(1, +e.target.value) * 60, halfwayNotified: false}))}} min="1" disabled={timerState.isRunning} className="h-8"/>
-              </div>
-              <div>
-                <Label htmlFor="shortBreakDurationConfig" className="text-xs">Pause Courte (min)</Label>
-                <Input id="shortBreakDurationConfig" type="number" value={configShortBreakDuration} onChange={e => {setConfigShortBreakDuration(Math.max(1, +e.target.value)); if(!timerState.isRunning && timerState.currentMode === 'shortBreak') setTimerState(p => ({...p, timeLeft: Math.max(1, +e.target.value) * 60, lastTickPlayedAt: Math.max(1, +e.target.value) * 60, halfwayNotified: false}))}} min="1" disabled={timerState.isRunning} className="h-8"/>
-              </div>
-              <div>
-                <Label htmlFor="longBreakDurationConfig" className="text-xs">Pause Longue (min)</Label>
-                <Input id="longBreakDurationConfig" type="number" value={configLongBreakDuration} onChange={e => {setConfigLongBreakDuration(Math.max(1, +e.target.value)); if(!timerState.isRunning && timerState.currentMode === 'longBreak') setTimerState(p => ({...p, timeLeft: Math.max(1, +e.target.value) * 60, lastTickPlayedAt: Math.max(1, +e.target.value) * 60, halfwayNotified: false}))}} min="1" disabled={timerState.isRunning} className="h-8"/>
-              </div>
-              <div>
-                <Label htmlFor="pomodorosPerCycleConfig" className="text-xs">Cycles / Pause Longue</Label>
-                <Input id="pomodorosPerCycleConfig" type="number" value={configPomodorosPerCycle} onChange={e => {setConfigPomodorosPerCycle(Math.max(1, +e.target.value)); if(!timerState.isRunning) setTimerState(p=>({...p, pomodorosInCycle: Math.max(1, +e.target.value)}))}} min="1" disabled={timerState.isRunning} className="h-8"/>
-              </div>
-            </div>
-             <div className="mt-4 flex justify-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowSavePresetDialog(true)} disabled={timerState.isRunning || !user}>
-                    <Save className="mr-2 h-4 w-4" /> Sauvegarder Config
-                </Button>
-            </div>
-          </Card>
-        )}
-
+        
         <div className="my-8 p-6 rounded-lg bg-gradient-to-br from-primary/10 via-background to-accent/10 shadow-inner">
             <div className="flex items-center justify-center mb-2">
                 {timerState.currentMode === 'work' && <Brain className="h-6 w-6 text-primary mr-2" />}
@@ -593,7 +533,7 @@ export function TimeFocusTool() {
                 {formatTime(timerState.timeLeft)}
             </div>
             <Progress value={progressPercentage} className="w-full h-3" />
-            {intensity > 2 && (
+            {intensity > 1 && ( // Display for Pomodoro modes (light, standard, custom, hyper)
                 <p className="text-sm text-muted-foreground mt-3">
                     Session {timerState.currentPomodoroCycle} / {timerState.pomodorosInCycle} | Total : {timerState.totalPomodorosCompleted}
                 </p>
@@ -609,14 +549,91 @@ export function TimeFocusTool() {
             <RotateCcw className="mr-2 h-6 w-6" /> Réinitialiser
           </Button>
         </div>
-        {(timerState.currentMode === 'shortBreak' || timerState.currentMode === 'longBreak') && intensity > 2 && (
+        {(timerState.currentMode === 'shortBreak' || timerState.currentMode === 'longBreak') && intensity > 1 && ( // Show for pomodoro modes
             <Button onClick={handleSkipBreak} variant="secondary" size="lg" className="w-full mt-2 text-lg py-3" disabled={timerState.isRunning}>
                 <SkipForward className="mr-2 h-6 w-6" /> Passer la Pause
             </Button>
         )}
-         <Button variant="outline" onClick={() => setShowPresetDialog(true)} className="w-full mt-4" disabled={timerState.isRunning}>
+        
+        <div className="mt-8 pt-6 border-t space-y-6">
+            <div>
+              <Label htmlFor="taskName">Nom de la tâche (optionnel) :</Label>
+              <Input
+                id="taskName"
+                type="text"
+                value={taskName}
+                onChange={(e) => setTaskName(e.target.value)}
+                placeholder="Sur quoi travaillez-vous ?"
+                className="mt-1 transition-all duration-200 ease-in-out hover:shadow-lg hover:animate-subtle-shake transform hover:scale-[1.01]"
+                disabled={timerState.isRunning}
+              />
+            </div>
+
+            {(intensity >= 4) && (
+              <Card className="p-4 bg-muted/50">
+                <CardTitle className="text-md mb-3 text-center">Configuration Pomodoro Personnalisée</CardTitle>
+                <div className="grid grid-cols-2 gap-4 items-end">
+                  <div>
+                    <Label htmlFor="workDurationConfig" className="text-xs">Travail (min)</Label>
+                    <Input id="workDurationConfig" type="number" value={configWorkDuration} 
+                           onChange={e => {
+                               const val = Math.max(1, +e.target.value);
+                               setConfigWorkDuration(val); 
+                               if(!timerState.isRunning && timerState.currentMode === 'work') setTimerState(p => ({...p, timeLeft: val * 60, lastTickPlayedAt: val * 60, halfwayNotified: false}))
+                           }} 
+                           min="1" disabled={!isConfigEditable} className="h-8"/>
+                  </div>
+                  <div>
+                    <Label htmlFor="shortBreakDurationConfig" className="text-xs">Pause Courte (min)</Label>
+                    <Input id="shortBreakDurationConfig" type="number" value={configShortBreakDuration} 
+                           onChange={e => {
+                               const val = Math.max(1, +e.target.value);
+                               setConfigShortBreakDuration(val); 
+                               if(!timerState.isRunning && timerState.currentMode === 'shortBreak') setTimerState(p => ({...p, timeLeft: val * 60, lastTickPlayedAt: val * 60, halfwayNotified: false}))
+                           }} 
+                           min="1" disabled={!isConfigEditable} className="h-8"/>
+                  </div>
+                  <div>
+                    <Label htmlFor="longBreakDurationConfig" className="text-xs">Pause Longue (min)</Label>
+                    <Input id="longBreakDurationConfig" type="number" value={configLongBreakDuration} 
+                           onChange={e => {
+                               const val = Math.max(1, +e.target.value);
+                               setConfigLongBreakDuration(val); 
+                               if(!timerState.isRunning && timerState.currentMode === 'longBreak') setTimerState(p => ({...p, timeLeft: val * 60, lastTickPlayedAt: val * 60, halfwayNotified: false}))
+                           }} 
+                           min="1" disabled={!isConfigEditable} className="h-8"/>
+                  </div>
+                  <div>
+                    <Label htmlFor="pomodorosPerCycleConfig" className="text-xs">Cycles / Pause Longue</Label>
+                    <Input id="pomodorosPerCycleConfig" type="number" value={configPomodorosPerCycle} 
+                           onChange={e => {
+                               const val = Math.max(1, +e.target.value);
+                               setConfigPomodorosPerCycle(val); 
+                               if(!timerState.isRunning) setTimerState(p=>({...p, pomodorosInCycle: val }))
+                           }} 
+                           min="1" disabled={!isConfigEditable} className="h-8"/>
+                  </div>
+                </div>
+                 <div className="mt-4 flex justify-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setShowSavePresetDialog(true)} disabled={timerState.isRunning || !user || intensity < 4}>
+                        <Save className="mr-2 h-4 w-4" /> Sauvegarder Config
+                    </Button>
+                </div>
+              </Card>
+            )}
+        </div>
+
+
+         <Button variant="outline" onClick={() => setShowPresetDialog(true)} className="w-full" disabled={timerState.isRunning}>
             <ListChecks className="mr-2 h-4 w-4" /> Charger un Preset de Minuterie
         </Button>
+
+        <div className="flex justify-center">
+             <Button onClick={handleToggleSound} variant="ghost" size="icon" aria-label={isSoundEnabled ? "Désactiver les sons" : "Activer les sons"}>
+                {isSoundEnabled ? <Volume2 className="h-6 w-6" /> : <VolumeX className="h-6 w-6 text-muted-foreground" />}
+             </Button>
+        </div>
+
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground mx-auto text-center w-full">
@@ -745,5 +762,3 @@ export function TimeFocusTool() {
     </Card>
   );
 }
-
-    
