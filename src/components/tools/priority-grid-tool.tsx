@@ -479,7 +479,6 @@ export function PriorityGridTool() {
   const formatDateDisplay = (dateString?: string) => {
     if (!dateString) return '';
     try {
-      // Handle potential 'Z' for UTC if parsing full ISO string, though we expect YYYY-MM-DD
       const dateToFormat = dateString.includes('T') ? new Date(dateString) : new Date(`${dateString}T00:00:00`);
       return format(dateToFormat, "dd/MM/yyyy", { locale: fr });
     } catch (e) {
@@ -1031,3 +1030,5 @@ export function PriorityGridTool() {
     </TooltipProvider>
   );
 }
+
+    

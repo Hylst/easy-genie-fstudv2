@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -89,7 +90,7 @@ export function FormalizerTool() {
   const currentIntensityDescription = intensityDescriptions[intensity] || "Le génie adapte son effort à votre demande.";
 
   return (
-    <Card className="w-full max-w-3xl mx-auto shadow-xl">
+    <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="text-3xl font-bold text-primary flex items-center gap-2">
           <Wand2 className="h-8 w-8" /> Formaliseur Magique

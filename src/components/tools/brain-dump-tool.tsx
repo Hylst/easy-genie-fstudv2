@@ -149,7 +149,7 @@ export function BrainDumpTool() {
       if (recognitionRef.current) recognitionRef.current.stop();
       if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
     };
-  }, [isListening]); // Removed dumpText to avoid re-init on text change
+  }, [isListening, toast]); 
 
  useEffect(() => {
     if (isListening && recognitionRef.current) {
@@ -161,17 +161,17 @@ export function BrainDumpTool() {
   }, [isListening, toast]);
 
   useEffect(() => {
-    if (!isLoadingActiveDump && user && dumpText !== undefined) { // Only save if not loading and text is defined
+    if (!isLoadingActiveDump && user && dumpText !== undefined) { 
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
       debounceTimeoutRef.current = setTimeout(() => {
-        handleSave(false); // Pass false to indicate this is a debounced auto-save
-      }, 2000); // 2 seconds debounce
+        handleSave(false); 
+      }, 2000); 
     }
     return () => { if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dumpText, user, isLoadingActiveDump]); // analysisResult, intensity are not debounced
+  }, [dumpText, user, isLoadingActiveDump]); 
 
 
   const handleSave = async (showToast: boolean = true) => {
@@ -206,35 +206,20 @@ export function BrainDumpTool() {
       setIsSaving(false);
     }
   };
-
+  
   const handleClear = async () => {
     if (!user) {
       setDumpText('');
       setAnalysisResult('');
-      toast({ title: "Zone de décharge nettoyée !", variant: "destructive" });
+      toast({ title: "Zone de décharge nettoyée !", variant: "default" }); // Changed variant from destructive
       return;
     }
     setDumpText('');
     setAnalysisResult('');
-    setActiveDumpId(null); // This will trigger creation of a new dump on next save
-    if (activeDumpId) { // If there was an active dump, mark it as empty essentially or delete it
-        try {
-            // Option 1: Update existing to empty
-            // await updateBrainDump(activeDumpId, { dump_text: '', analysis_text: undefined, intensity_level_on_analysis: undefined });
-            // Option 2: Delete it (might be better UX if user expects clear to "remove")
-            // await deleteBrainDump(activeDumpId); // This would require sync and local hard delete
-            // For simplicity of not creating "deleted" active dumps, we'll just clear fields and let next save be a new one if activeDumpId was nullified
-             if (activeDumpId) {
-                // To truly clear the "active" session, we effectively start a new one by nullifying activeDumpId
-                // The next save will create a new record. The old one remains but won't be the "most recent" anymore.
-             }
-
-        } catch (error) {
-            console.error("Error clearing active dump on server:", error);
-            toast({ title: "Erreur", description: "Impossible de réinitialiser la session active sur le serveur.", variant: "destructive" });
-        }
-    }
-    toast({ title: "Zone de décharge nettoyée !", description: "Prêt pour une nouvelle session.", variant: "destructive" });
+    setActiveDumpId(null);
+    // No need to explicitly delete the "active" dump from DB, it just becomes the last edited one.
+    // A new one will be created on next save if no activeDumpId.
+    toast({ title: "Zone de décharge nettoyée !", description: "Prêt pour une nouvelle session.", variant: "default" });
   };
 
   const handleDownload = () => {
@@ -261,7 +246,7 @@ export function BrainDumpTool() {
     try {
       const result = await analyzeBrainDump({ brainDumpText: dumpText, intensityLevel: intensity });
       setAnalysisResult(result.analysis);
-      await handleSave(false); // Save after analysis
+      await handleSave(false); 
       toast({ title: "Analyse terminée !", description: "Le génie a examiné vos pensées." });
     } catch (error) {
       console.error("Error analyzing brain dump:", error);
@@ -307,7 +292,7 @@ export function BrainDumpTool() {
         intensity_level_on_analysis: analysisResult ? intensity : undefined,
       };
       await addBrainDumpHistoryEntry(historyDto);
-      await loadHistory(); // Refresh history list
+      await loadHistory(); 
       setShowSaveHistoryDialog(false);
       setHistoryEntryName('');
       toast({ title: "Enregistré dans l'historique !" });
@@ -323,16 +308,16 @@ export function BrainDumpTool() {
     setDumpText(entry.dump_text);
     setAnalysisResult(entry.analysis_text || '');
     setIntensity(entry.intensity_level_on_analysis || 3);
-    setActiveDumpId(null); // Consider this loaded content as a new "active" session, or find/update existing if desired
+    setActiveDumpId(null); // Loading from history means it's a new "active" session based on old data.
     toast({ title: `"${entry.name}" chargé !`, description: "Le contenu a été restauré dans la zone principale."});
   };
 
   const handleDeleteFromHistory = async (id: string) => {
     if (!user) return;
-    setIsSaving(true); // Use general saving indicator
+    setIsSaving(true); 
     try {
       await deleteBrainDumpHistoryEntry(id);
-      await loadHistory(); // Refresh history list
+      await loadHistory(); 
       toast({ title: "Entrée d'historique supprimée", variant: "destructive" });
     } catch (error) {
       console.error("Error deleting from history:", error);
@@ -351,7 +336,7 @@ export function BrainDumpTool() {
   }
 
   return (
-    <Card className="w-full max-w-xl mx-auto shadow-xl"> {/* Reduced width */}
+    <Card className="w-full max-w-xl mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="text-3xl font-bold text-primary">Décharge de Pensées Magique</CardTitle>
         <CardDescription>Un espace pour vider votre esprit. Écrivez ou dictez. Le génie peut ensuite analyser et organiser vos pensées.</CardDescription>
@@ -384,18 +369,39 @@ export function BrainDumpTool() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-          <Button onClick={handleAnalyze} disabled={isAnalyzing || !dumpText.trim() || !user || isSaving} className="w-full sm:w-auto text-lg py-3">
+        <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3">
+          <Button 
+            onClick={handleAnalyze} 
+            disabled={isAnalyzing || !dumpText.trim() || !user || isSaving} 
+            className="w-full sm:flex-1 sm:min-w-[200px] text-lg py-3 order-1"
+          >
             {isAnalyzing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Wand2 className="mr-2 h-5 w-5" />}
             Analyser par le Génie
           </Button>
-          <div className="flex gap-2">
-            <Button onClick={() => handleSave(true)} variant="outline" disabled={isSaving || !user || isAnalyzing}>
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:flex-initial order-2 justify-center sm:justify-end">
+            <Button onClick={() => handleSave(true)} variant="outline" className="w-full sm:w-auto" disabled={isSaving || !user || isAnalyzing}>
                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
                 Sauvegarder Actif
             </Button>
-            <Button onClick={handleDownload} variant="outline" disabled={!dumpText.trim()}><Download className="mr-2 h-4 w-4" /> Télécharger</Button>
-            <Button onClick={handleClear} variant="destructive" disabled={(!dumpText.trim() && !analysisResult.trim()) || !user || isSaving || isAnalyzing}><Trash2 className="mr-2 h-4 w-4" /> Effacer Actif</Button>
+            <Button onClick={handleDownload} variant="outline" className="w-full sm:w-auto" disabled={!dumpText.trim()}><Download className="mr-2 h-4 w-4" /> Télécharger</Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" className="w-full sm:w-auto" disabled={(!dumpText.trim() && !analysisResult.trim()) || !user || isSaving || isAnalyzing}><Trash2 className="mr-2 h-4 w-4" /> Effacer Actif</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Êtes-vous sûr d'effacer la décharge active ?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Cela effacera le texte et l'analyse en cours. Cette action ne peut pas être annulée.
+                    Les entrées sauvegardées dans l'historique ne seront pas affectées.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClear}>Oui, effacer</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
         

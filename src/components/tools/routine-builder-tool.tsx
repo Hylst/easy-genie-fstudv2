@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef, type FormEvent, useCallback } from 'react';
@@ -66,7 +67,6 @@ export function RoutineBuilderTool() {
   const [isListening, setIsListening] = useState<boolean>(false);
   const [activeMicField, setActiveMicField] = useState<ActiveMicField | null>(null);
 
-  // Debounce timer ref for step text changes
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 
@@ -96,7 +96,7 @@ export function RoutineBuilderTool() {
 
   useEffect(() => {
     fetchRoutinesAndSteps();
-  }, [fetchRoutinesAndSteps, isOnline]); // Re-fetch when user or online status changes
+  }, [fetchRoutinesAndSteps, isOnline]); 
 
 
   useEffect(() => {
@@ -124,7 +124,6 @@ export function RoutineBuilderTool() {
               steps: r.steps.map(s => s.id === stepId ? { ...s, text: s.text + ' ' + transcript } : s)
             } : r
           ));
-          // Trigger debounced save for edited step text
           const routine = routines.find(r => r.id === routineId);
           const step = routine?.steps.find(s => s.id === stepId);
           if (step) {
@@ -152,7 +151,7 @@ export function RoutineBuilderTool() {
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [activeMicField, routines]); // Add routines to dep array for editStep_ scenario
+  }, [activeMicField, routines]); 
 
   useEffect(() => {
     if (isListening && recognitionRef.current) {
@@ -260,7 +259,7 @@ export function RoutineBuilderTool() {
       const stepDto: CreateRoutineStepDTO = {
         routine_id: routineId,
         text,
-        order: routine.steps.length, // Simple order based on current count
+        order: routine.steps.length, 
       };
       const addedStep = await addStepToRoutine(routineId, stepDto);
       setRoutines(prevRoutines => prevRoutines.map(r =>
@@ -301,17 +300,15 @@ export function RoutineBuilderTool() {
       clearTimeout(debounceTimeoutRef.current);
     }
     debounceTimeoutRef.current = setTimeout(async () => {
-      if (!user) return; // No save if user logged out during debounce
+      if (!user) return; 
       try {
         await updateRoutineStep(stepId, { text: newText });
-        // Optimistic update already handled by direct input change if needed,
-        // or rely on re-fetch/sync for absolute consistency. Here, we assume direct change is fine.
         toast({ title: "Étape sauvegardée", description: "Modification de l'étape enregistrée."});
       } catch (error) {
         console.error("Error saving step text:", error);
         toast({ title: "Erreur de sauvegarde", description: "Impossible d'enregistrer le texte de l'étape.", variant: "destructive"});
       }
-    }, 1000); // 1 second debounce
+    }, 1000); 
   }, [user, toast]);
 
   const handleStepTextChange = (routineId: string, stepId: string, text: string) => {
@@ -427,19 +424,23 @@ export function RoutineBuilderTool() {
   }
 
   return (
-    <Card className="w-full max-w-3xl mx-auto shadow-xl">
-      <CardHeader>
-        <CardTitle className="text-3xl font-bold text-primary flex items-center gap-2">
-          <Edit3 className="h-8 w-8" /> RoutineBuilder Magique
-        </CardTitle>
-        <CardDescription>
-          Organisez votre quotidien avec des routines personnalisées.
-          {!user && " Connectez-vous pour sauvegarder et synchroniser vos routines."}
-        </CardDescription>
+    <Card className="w-full max-w-xl mx-auto shadow-xl">
+      <CardHeader className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+        <div className="flex-grow">
+          <CardTitle className="text-3xl font-bold text-primary flex items-center gap-2">
+            <Edit3 className="h-8 w-8" /> Constructeur de Routines Magiques
+          </CardTitle>
+          <CardDescription>
+            Organisez votre quotidien avec des routines personnalisées.
+            {!user && " Connectez-vous pour sauvegarder et synchroniser vos routines."}
+          </CardDescription>
+        </div>
+        <div className="w-full md:w-auto md:min-w-[300px] md:max-w-xs lg:max-w-sm shrink-0">
+            <IntensitySelector value={intensity} onChange={setIntensity} />
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <IntensitySelector value={intensity} onChange={setIntensity} />
-        <p className="text-sm text-muted-foreground text-center -mt-2 h-5">{intensityDescription()}</p>
+        <p className="text-sm text-muted-foreground text-center -mt-4 h-5">{intensityDescription()}</p>
 
         {!user && (
           <Card className="p-6 bg-yellow-50 border-yellow-300 text-yellow-700 text-center">
