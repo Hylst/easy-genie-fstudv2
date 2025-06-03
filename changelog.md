@@ -153,6 +153,13 @@
     *   Added "Tout effacer" and "Effacer les tâches complétées" buttons with confirmation dialogs.
     *   Implemented bulk deletion logic in `AppDataService` and underlying services (`PriorityTaskIndexedDBService`, `PriorityTaskSupabaseService`).
     *   Local task state in `PriorityGridTool` is updated (by re-fetching) after bulk operations.
+    *   UI refresh logic in `PriorityGridTool` (calling `fetchTasks()`) after add, delete, update, toggle complete to ensure UI consistency.
+- **TaskBreaker Tool Enhancements (Phase 1 - Export, Presets, Local History)**:
+    - Added Export options (Text, Markdown, Email via `mailto:`).
+    - Implemented "Charger une Tâche Courante" (Presets) functionality with a dialog.
+    - Implemented a local history feature (using `localStorage`) to save/load/delete named task breakdowns.
+    - Updated `TaskBreakerTask` type to include `isExpanded` for UI state persistence.
+    - Clarified that current task breakdown is auto-saved to `localStorage`.
 
 ## To Do
 
@@ -167,11 +174,11 @@
     - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
     - Consider migrating custom preset storage from `localStorage` to the database.
-    - Resolve issue where UI for task completion doesn't update immediately without a page refresh (investigate state update/re-fetch logic in `handleToggleComplete`).
 - **TaskBreaker Tool Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
     - Ensure robust recursive deletion of child tasks in Supabase (currently RLS/DB cascade dependent for remote, client-side for local).
+    - **Phase 2**: Database integration for TaskBreaker History.
 - **RoutineBuilder Tool Enhancements (Phase 2)**:
     - Consider UI for reordering routines and steps (order is saved, but no UI to change it yet).
     - Optional: Add specific time input for routines.

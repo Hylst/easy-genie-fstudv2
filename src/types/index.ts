@@ -74,45 +74,54 @@ export interface BrainDumpContent extends BaseEntity {
 }
 
 export interface TaskBreakerTask extends BaseEntity {
-  parent_id?: string | null; // UUID of parent task, or null for root tasks related to a main concept
-  main_task_text_context?: string; // Optional: original main task text if this is a root-level subtask
+  parent_id?: string | null; 
+  main_task_text_context?: string; 
   text: string;
   is_completed: boolean;
-  depth: number; // 0 for direct children of a main task concept, 1 for children of those, etc.
-  order: number; // Order within its siblings
+  depth: number; 
+  order: number; 
+  isExpanded?: boolean; // Added for UI state persistence for TaskBreakerTool
 }
 
 
 // --- DTOs for Create operations ---
-// These omit system-generated fields like id, user_id (passed separately), created_at, updated_at, sync_status, last_synced_at.
-// isCompleted and other optional fields may have defaults handled by services.
-
 export type CreatePriorityTaskDTO = Omit<PriorityTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'isCompleted' | 'sync_status' | 'last_synced_at'> & { isCompleted?: boolean };
 
 export type CreateRoutineDTO = Omit<Routine, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 
 export type CreateRoutineStepDTO = Omit<RoutineStep, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'isCompleted' | 'sync_status' | 'last_synced_at'> & { 
   isCompleted?: boolean;
-  routine_id: string; // Must be provided when creating a step
-  order: number; // Must be provided
+  routine_id: string; 
+  order: number; 
 };
 
 export type CreateBrainDumpContentDTO = Omit<BrainDumpContent, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 
-export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'is_completed' | 'depth' | 'sync_status' | 'last_synced_at'> & { 
+export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'is_completed' | 'depth' | 'sync_status' | 'last_synced_at' | 'isExpanded'> & { 
   is_completed?: boolean; 
-  depth?: number; // Optional here, can be set by service based on parent
+  depth?: number; 
   parent_id?: string | null;
   main_task_text_context?: string;
-  order: number; // Must be provided
+  order: number; 
+  isExpanded?: boolean;
 };
 
 
+// --- Specific types for TaskBreakerTool History ---
+export interface SavedTaskBreakdown {
+  id: string;
+  name: string; // User-given name for this saved breakdown
+  mainTaskText: string;
+  subTasks: TaskBreakerTask[]; // Using TaskBreakerTask directly as subtasks have the same structure
+  createdAt: string; // ISO date string
+  intensityOnSave?: number; // Optional: intensity level at the time of saving
+}
+
+
 // For UI state, not directly for DB, might differ slightly (e.g. dates as Date objects)
-// These UI types are from previous iterations and might need review/removal if fully replaced by DB types
 export interface UIRoutine extends Omit<Routine, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'> {
-  id: string; // For UI key
-  user_id?: string; // Optional during creation
+  id: string; 
+  user_id?: string; 
   created_at?: string | Date;
   updated_at?: string | Date;
   steps: UIRoutineStep[];
