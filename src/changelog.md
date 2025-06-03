@@ -43,12 +43,14 @@
     - Visual feedback for active microphone and loading states.
 - **Attribution**: Added "Geoffroy Streit" as creator in README and Footer.
 - **Standardized Development Guide**: Created `tool_coding_method.md`.
+- **TaskBreaker Tool Renamed to "Décomposeur de Tâches"**
 - **TaskBreaker Tool AI Enhancement & Recursive Breakdown**:
     - Implemented Genkit AI flow `breakdown-task-flow.ts` for "Décomposer" button to provide sub-task suggestions based on main task and intensity.
     - Updated `TaskBreakerTool` UI to call AI, display suggestions, and handle loading states.
     - Added voice input for the main task field.
     - Sub-tasks (AI-generated or manual) are saved to/loaded from localStorage.
     - **Recursive Breakdown**: Implemented ability to break down any sub-task into further sub-sub-tasks, both manually and using AI. UI updated with indentation and controls for nested tasks. State management refactored to handle tree structure. LocalStorage updated to `TASK_BREAKER_STORAGE_KEY_SUBTASKS_v2` due to structure change.
+- **PriorityGrid Renamed to "Grille des Priorités"**
 - **PriorityGrid Tool Enhancements (Phase 1 - UI/UX & Basic Presets)**:
     - Updated `PriorityTask` interface to include optional `frequency`, `specificDate`, `specificTime`.
     - Enhanced the "Add Task" form with inputs for these new properties (Select for frequency, Popover Calendar for date, input type="time" for time).
@@ -109,7 +111,7 @@
         - `BrainDumpSupabaseService` (`src/services/supabase/brain-dump.supabase.service.ts`) with full CRUD for brain dumps.
         - `TaskBreakerSupabaseService` (`src/services/supabase/task-breaker.supabase.service.ts`) with full CRUD for tasks.
     - Expanded `AppDataService` (`src/services/appDataService.ts`) to include methods for `RoutineService`, `BrainDumpService`, and `TaskBreakerService`, routing calls to the appropriate local or remote service based on online status and user ID.
-- **Database Integration (Phase 3: Integrate PriorityGrid with New Data Layer)**
+- **Database Integration (Phase 3: Integrate Grille des Priorités with New Data Layer)**
     - Refactored `PriorityGridTool` to use `AppDataService.getAllPriorityTasks()`, `AppDataService.addPriorityTask()`, etc., instead of `localStorage` for task data.
     - Used ShadCN `Checkbox` component for task completion in `PriorityGridTool`.
     - The "Hors ligne / Online" toggle in `MagicHeader` (managed via `AuthContext`) now effectively switches data sources for `PriorityGridTool` (IndexedDB or Supabase) via `AppDataService`, triggering data re-fetch.
@@ -128,7 +130,7 @@
 - **Database Integration (Phase 4: Synchronization Logic - Extended to All Entities)**:
     - Extended `sync_status` management and soft-delete logic to `RoutineIndexedDBService`, `BrainDumpIndexedDBService`, `TaskBreakerIndexedDBService`.
     - Implemented `getPendingChanges`, `updateSyncStatus`, `hardDelete` (and `bulkUpdate`) helpers in these IndexedDB services.
-    - Updated `AppDataService` CRUD methods for Routines (and Steps), Brain Dumps, and Task Breaker tasks with the try-Supabase-first, then-local-with-sync-status logic.
+    - Updated `AppDataService` CRUD methods for Routines (and Steps), Brain Dumps, and Décomposeur de Tâches tasks with the try-Supabase-first, then-local-with-sync-status logic.
     - Implemented `synchronizeRoutines`, `synchronizeBrainDumps`, `synchronizeTaskBreakerTasks` in `AppDataService`.
     - Updated main `synchronizeAllData` in `AppDataService` to orchestrate syncing for all entities.
 - **Database Integration (Phase 5: Integrate Tools - BrainDumpTool)**:
@@ -144,7 +146,7 @@
     *   Debounced saving for step text changes.
     *   AI suggestions create routines and steps via `AppDataService`.
     *   Loading states and UI disabling for logged-out users implemented.
-- **Database Integration (Phase 5: Integrate Tools - TaskBreakerTool)**:
+- **Database Integration (Phase 5: Integrate Tools - Décomposeur de Tâches)**:
     *   Refactored `TaskBreakerTool` to use `AppDataService` instead of `localStorage` for task breakdown data (`TaskBreakerTask` items).
     *   Task data (main task context and sub-tasks tree) is fetched and saved via `AppDataService`.
     *   All CRUD operations (AI breakdown, manual add, update, delete, complete) for tasks now use `AppDataService`.
@@ -152,21 +154,22 @@
     *   UI disabled if no user is logged in.
     *   Added `main_task_text_context` to `task_breaker_tasks` table and relevant services.
     *   `isExpanded` UI state for tasks is now managed client-side (localStorage/component state) and not persisted to DB.
-- **TaskBreaker Tool Enhancements (Post-Database Integration - Phase 1 - Local History & Custom Presets)**:
+- **Décomposeur de Tâches Enhancements (Post-Database Integration - Phase 1 - Local History & Custom Presets)**:
     - Added Export options (Text, Markdown, Email via `mailto:`).
     - Relocated action buttons to the bottom of the tool for better layout.
     - Added "Effacer Tâche Actuelle" button with confirmation (DB integrated).
     - Implemented "Mémoriser Tâche Actuelle" (save as custom common preset) using `AppDataService` (DB integrated via `task_breaker_custom_presets`).
-    - Updated "Charger Tâche" dialog to display system presets and custom-saved modèles (from DB), with deletion for custom ones.
+    - Updated "Suggestions de Tâches" dialog to display system presets and custom-saved modèles (from DB), with deletion for custom ones.
     - Implemented local history feature (using `localStorage`, renamed `TaskBreakerSavedBreakdown`) to save/load/delete named task breakdowns. The "Sauvegarder dans l'Historique" button and "Voir Historique" button manage this local history.
     - Corrected icon usage (`Save` instead of `FloppyDisk`).
     - Expanded list of "Suggestions de Tâches" and added "Charger Tâche Décomposée" with pre-defined complex tasks.
     - Corrected bug with loading from history not updating UI correctly.
-    - Ensured "Effacer Tâche Actuelle" correctly clears the UI.
-- **Database Integration (Phase 5 Continued: TaskBreaker History with Supabase)**:
-    - Integrated `TaskBreakerSavedBreakdown` (Historique) with `AppDataService` for Supabase synchronization.
-    - Updated `TaskBreakerTool.tsx` to use `AppDataService` for history operations, removing direct `localStorage` usage for this feature.
-- **PriorityGridTool Enhancements (Post-Database Integration)**:
+    - Ensured "Effacer Tâche Actuelle" correctly clears the UI and focuses input.
+- **Database Integration (Phase 5 Continued: Décomposeur de Tâches - History & Custom Presets with Supabase)**:
+    - Integrated `TaskBreakerCustomPreset` (Modèles de tâches mémorisés) with `AppDataService` for Supabase synchronization.
+    - Integrated `TaskBreakerSavedBreakdown` (Historique des décompositions) with `AppDataService` for Supabase synchronization.
+    - Updated `TaskBreakerTool.tsx` to use `AppDataService` for these features, removing direct `localStorage` usage.
+- **Grille des Priorités Enhancements (Post-Database Integration)**:
     *   Added "Tout effacer" and "Effacer les tâches complétées" buttons with confirmation dialogs.
     *   Implemented bulk deletion logic in `AppDataService` and underlying services (`PriorityTaskIndexedDBService`, `PriorityTaskSupabaseService`).
     *   Local task state in `PriorityGridTool` is updated (by re-fetching) after bulk operations.
@@ -182,11 +185,11 @@
         * Delta sync from server (fetch only changes since `last_synced_at`).
         * More robust conflict resolution strategies (beyond current server-wins-on-download).
         * Background sync (web workers).
-- **PriorityGrid Tool Enhancements (Post-Database Integration)**:
+- **Grille des Priorités Enhancements (Post-Database Integration)**:
     - Implement a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
     - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
-- **TaskBreaker Tool Enhancements**:
+- **Décomposeur de Tâches Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
     - Ensure robust recursive deletion of child tasks in Supabase (currently client-side IndexedDB handles recursion, Supabase needs DB cascade or iterative delete for full robustness without it).

@@ -203,7 +203,7 @@ export function PriorityGridTool() {
   useEffect(() => {
     fetchTasks();
     fetchCustomPresets();
-  }, [fetchTasks, fetchCustomPresets, isOnline]); // isOnline ensures re-fetch on status change
+  }, [fetchTasks, fetchCustomPresets, isOnline]); 
 
   const resetNewTaskForm = () => {
     setNewTaskText('');
@@ -332,7 +332,6 @@ export function PriorityGridTool() {
       setNewSpecificDate(tomorrow);
     } else if (preset.specificDate) {
        try {
-        // Ensure parsing YYYY-MM-DD as local date to avoid timezone issues
         const [year, month, day] = preset.specificDate.split('-').map(Number);
         setNewSpecificDate(new Date(year, month - 1, day));
        } catch (e) {
@@ -389,7 +388,7 @@ export function PriorityGridTool() {
         specific_time: newSpecificTime || undefined,
       };
       await addPriorityGridCustomPreset(presetDto);
-      await fetchCustomPresets(); // Re-fetch to update list
+      await fetchCustomPresets(); 
       toast({ title: "Preset Personnalisé Sauvegardé!", description: `"${newPresetName}" a été ajouté à vos presets.` });
       setNewPresetName('');
       setIsSavePresetDialogOpen(false);
@@ -409,7 +408,7 @@ export function PriorityGridTool() {
     setIsSubmitting(true);
     try {
       await deletePriorityGridCustomPreset(presetId);
-      await fetchCustomPresets(); // Re-fetch to update list
+      await fetchCustomPresets(); 
       toast({ title: "Preset personnalisé supprimé", variant: "destructive" });
     } catch (error) {
       console.error("Error deleting custom preset:", error);
@@ -426,7 +425,7 @@ export function PriorityGridTool() {
         id: 'custom_presets',
         name: '🌟 Mes Presets Personnalisés',
         presets: customPresets.map(cp => ({
-            id: cp.id, // DB id
+            id: cp.id,
             name: cp.name,
             text: cp.task_text,
             quadrant: cp.quadrant,
@@ -480,7 +479,6 @@ export function PriorityGridTool() {
   const formatDateDisplay = (dateString?: string) => {
     if (!dateString) return '';
     try {
-      // Assuming dateString is YYYY-MM-DD
       const [year, month, day] = dateString.split('-').map(Number);
       return format(new Date(year, month - 1, day), "dd/MM/yyyy", { locale: fr });
     } catch (e) {
@@ -575,7 +573,7 @@ export function PriorityGridTool() {
     <TooltipProvider>
       <Card className="w-full max-w-5xl mx-auto shadow-xl">
         <CardHeader>
-          <CardTitle className="text-3xl font-bold text-primary">PriorityGrid Magique</CardTitle>
+          <CardTitle className="text-3xl font-bold text-primary">Grille des Priorités Magique</CardTitle>
           <CardDescription>Organisez vos tâches avec la matrice d'Eisenhower. {user ? (isOnline ? "Mode En Ligne." : "Mode Hors Ligne.") : "Non connecté."}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -816,7 +814,7 @@ export function PriorityGridTool() {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Êtes-vous absolument sûr ?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Cette action est irréversible et supprimera toutes vos tâches de la PriorityGrid.
+                        Cette action est irréversible et supprimera toutes vos tâches de la Grille des Priorités.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

@@ -1,9 +1,10 @@
+
 import { TaskBreakerTool } from '@/components/tools/task-breaker-tool';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'TaskBreaker | Easy Genie',
-  description: 'Décomposez vos tâches complexes en étapes simples et gérables avec TaskBreaker.',
+  title: 'Décomposeur de Tâches | Easy Genie',
+  description: 'Décomposez vos tâches complexes en étapes simples et gérables avec le Décomposeur de Tâches.',
 };
 
 export default function TaskBreakerPage() {
