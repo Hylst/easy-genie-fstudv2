@@ -1140,13 +1140,14 @@ export function TaskBreakerTool() {
           }
       }
       
-      await fetchTaskData({ preserveCurrentContext: false }); 
-
+      // Ensure main task input and current context are cleared before potentially re-fetching
       setMainTaskInput('');
       setCurrentMainTaskContext(''); 
       setNewDirectSubTaskText('');
       setNewChildSubTaskText({});
       setExpandedStates({}); 
+
+      await fetchTaskData({ preserveCurrentContext: false }); // This will fetch remaining tasks and potentially reset context if no other tasks exist
 
       setShowClearTaskDialog(false);
       toast({ title: "Tâche actuelle effacée", variant: "destructive"});
@@ -1282,15 +1283,22 @@ export function TaskBreakerTool() {
   return (
     <Card className="w-full max-w-3xl mx-auto shadow-xl">
       <CardHeader>
-        <CardTitle className="text-3xl font-bold text-primary">Décomposeur de Tâches Magique</CardTitle>
-        <CardDescription>
-          Décomposez vos tâches complexes. Le Génie vous aide à voir plus clair, niveau par niveau !
-          {user ? (isOnline ? " Vos tâches et modèles sont synchronisés." : " Mode hors ligne, données sauvegardées localement.") : " Connectez-vous pour sauvegarder et synchroniser."}
-        </CardDescription>
+        <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+          <div className="flex-grow">
+            <CardTitle className="text-3xl font-bold text-primary mb-1">Décomposeur de Tâches Magique</CardTitle>
+            <CardDescription>
+              Décomposez vos tâches complexes. Le Génie vous aide à voir plus clair, niveau par niveau !
+              {user ? (isOnline ? " Vos tâches et modèles sont synchronisés." : " Mode hors ligne, données sauvegardées localement.") : " Connectez-vous pour sauvegarder et synchroniser."}
+            </CardDescription>
+          </div>
+          <div className="w-full md:w-auto md:min-w-[300px] md:max-w-xs lg:max-w-sm shrink-0">
+            <IntensitySelector value={intensity} onChange={setIntensity} />
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <IntensitySelector value={intensity} onChange={setIntensity} />
-        <p className="text-sm text-muted-foreground text-center -mt-2 h-5">{intensityDescription()}</p>
+        {/* IntensitySelector was here, now moved to header */}
+        {/* <p className="text-sm text-muted-foreground text-center -mt-2 h-5">{intensityDescription()}</p> */}
 
         {!user && (
             <Card className="p-6 bg-yellow-50 border-yellow-300 text-yellow-700 text-center">

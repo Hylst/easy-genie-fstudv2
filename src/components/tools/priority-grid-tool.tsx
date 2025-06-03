@@ -479,8 +479,9 @@ export function PriorityGridTool() {
   const formatDateDisplay = (dateString?: string) => {
     if (!dateString) return '';
     try {
-      const [year, month, day] = dateString.split('-').map(Number);
-      return format(new Date(year, month - 1, day), "dd/MM/yyyy", { locale: fr });
+      // Handle potential 'Z' for UTC if parsing full ISO string, though we expect YYYY-MM-DD
+      const dateToFormat = dateString.includes('T') ? new Date(dateString) : new Date(`${dateString}T00:00:00`);
+      return format(dateToFormat, "dd/MM/yyyy", { locale: fr });
     } catch (e) {
       console.error("Error formatting date:", e, "Input was:", dateString);
       return "Date invalide";
@@ -573,11 +574,18 @@ export function PriorityGridTool() {
     <TooltipProvider>
       <Card className="w-full max-w-5xl mx-auto shadow-xl">
         <CardHeader>
-          <CardTitle className="text-3xl font-bold text-primary">Grille des Priorités Magique</CardTitle>
-          <CardDescription>Organisez vos tâches avec la matrice d'Eisenhower. {user ? (isOnline ? "Mode En Ligne." : "Mode Hors Ligne.") : "Non connecté."}</CardDescription>
+          <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+            <div className="flex-grow">
+              <CardTitle className="text-3xl font-bold text-primary mb-1">Grille des Priorités Magique</CardTitle>
+              <CardDescription>Organisez vos tâches avec la matrice d'Eisenhower. {user ? (isOnline ? "Mode En Ligne." : "Mode Hors Ligne.") : "Non connecté."}</CardDescription>
+            </div>
+            <div className="w-full md:w-auto md:min-w-[300px] md:max-w-xs lg:max-w-sm shrink-0">
+              <IntensitySelector value={intensity} onChange={setIntensity} />
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          <IntensitySelector value={intensity} onChange={setIntensity} />
+          {/* IntensitySelector was here, now moved to header */}
 
           <Card className="p-4 sm:p-6 bg-card shadow-md">
             <CardTitle className="text-xl mb-1 text-primary">Ajouter une Tâche</CardTitle>
