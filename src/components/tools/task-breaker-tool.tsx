@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
-import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, Save, BookOpenCheck } from 'lucide-react';
+import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, Save, BookOpenCheck, Eraser, BookmarkPlus } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { breakdownTask } from '@/ai/flows/breakdown-task-flow';
-import type { TaskBreakerTask, SavedTaskBreakdown } from '@/types';
+import type { TaskBreakerTask, SavedTaskBreakdown, CommonTaskPreset } from '@/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,26 +28,35 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
-const TASK_BREAKER_STORAGE_KEY_MAIN = "easyGenieTaskBreakerMain_v1"; // version if structure changes significantly
-const TASK_BREAKER_STORAGE_KEY_SUBTASKS = "easyGenieTaskBreakerSubtasks_v3"; // new key for isExpanded
+
+const TASK_BREAKER_STORAGE_KEY_MAIN = "easyGenieTaskBreakerMain_v1";
+const TASK_BREAKER_STORAGE_KEY_SUBTASKS = "easyGenieTaskBreakerSubtasks_v3";
 const TASK_BREAKER_HISTORY_KEY = "easyGenieTaskBreakerHistory_v1";
+const TASK_BREAKER_CUSTOM_COMMON_PRESETS_KEY = "easyGenieTaskBreakerCustomCommonPresets_v1";
 
-interface CommonTaskPreset {
-  id: string;
-  name: string;
-  description: string;
-}
 
-const commonTaskPresets: CommonTaskPreset[] = [
-  { id: 'evt', name: "Organiser un événement majeur (ex: mariage, grande conférence)", description: "De la conception initiale à la gestion le jour J." },
-  { id: 'report', name: "Rédiger un rapport de recherche approfondi", description: "Incluant la collecte de données, l'analyse, la rédaction et la révision." },
-  { id: 'skill', name: "Apprendre une nouvelle compétence complexe (ex: un langage de programmation, un instrument)", description: "Définir les objectifs, trouver les ressources, pratiquer régulièrement et évaluer les progrès." },
-  { id: 'launch', name: "Lancer un nouveau produit ou service", description: "De l'étude de marché au marketing, en passant par le développement et le lancement." },
-  { id: 'move', name: "Planifier un déménagement international", description: "Logistique, visas, recherche de logement, adaptation culturelle." },
+const systemTaskPresets: CommonTaskPreset[] = [
+  { id: 'evt', name: "Organiser un événement majeur", taskText: "Organiser un événement majeur (ex: mariage, grande conférence)", isSystemPreset: true },
+  { id: 'report', name: "Rédiger un rapport de recherche", taskText: "Rédiger un rapport de recherche approfondi (collecte, analyse, rédaction, révision)", isSystemPreset: true },
+  { id: 'skill', name: "Apprendre une nouvelle compétence", taskText: "Apprendre une nouvelle compétence complexe (ex: langage de programmation, instrument)", isSystemPreset: true },
+  { id: 'launch', name: "Lancer un nouveau produit/service", taskText: "Lancer un nouveau produit ou service (étude de marché, développement, marketing)", isSystemPreset: true },
+  { id: 'move', name: "Planifier un déménagement international", taskText: "Planifier un déménagement international (logistique, visas, logement, adaptation)", isSystemPreset: true },
 ];
 
 
@@ -69,7 +78,13 @@ export function TaskBreakerTool() {
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [saveToHistoryDialog, setSaveToHistoryDialog] = useState(false);
   const [currentBreakdownName, setCurrentBreakdownName] = useState('');
+  
   const [showPresetsDialog, setShowPresetsDialog] = useState(false);
+  const [customCommonPresets, setCustomCommonPresets] = useState<CommonTaskPreset[]>([]);
+  const [showSaveCustomPresetDialog, setShowSaveCustomPresetDialog] = useState(false);
+  const [newCustomPresetNameInput, setNewCustomPresetNameInput] = useState('');
+  
+  const [showClearTaskDialog, setShowClearTaskDialog] = useState(false);
 
 
   useEffect(() => {
@@ -91,6 +106,15 @@ export function TaskBreakerTool() {
         } catch (e) {
             console.error("Failed to parse history from localStorage", e);
             localStorage.removeItem(TASK_BREAKER_HISTORY_KEY);
+        }
+    }
+    const savedCustomPresets = localStorage.getItem(TASK_BREAKER_CUSTOM_COMMON_PRESETS_KEY);
+    if (savedCustomPresets) {
+        try {
+            setCustomCommonPresets(JSON.parse(savedCustomPresets));
+        } catch (e) {
+            console.error("Failed to parse custom common presets from localStorage", e);
+            localStorage.removeItem(TASK_BREAKER_CUSTOM_COMMON_PRESETS_KEY);
         }
     }
 
@@ -146,6 +170,10 @@ export function TaskBreakerTool() {
   useEffect(() => {
     localStorage.setItem(TASK_BREAKER_HISTORY_KEY, JSON.stringify(history));
   }, [history]);
+
+  useEffect(() => {
+    localStorage.setItem(TASK_BREAKER_CUSTOM_COMMON_PRESETS_KEY, JSON.stringify(customCommonPresets));
+  }, [customCommonPresets]);
 
   const handleToggleVoiceInput = () => {
     if (!recognitionRef.current) {
@@ -230,7 +258,7 @@ export function TaskBreakerTool() {
         subTasks: [],
         depth: currentDepth,
         isExpanded: false,
-        order: 0, // Order will be set by parent or if root
+        order: 0, 
       }));
 
       if (parentId === null) {
@@ -306,14 +334,13 @@ export function TaskBreakerTool() {
     return "Le Génie fournira une décomposition très fine et détaillée.";
   };
   
-  // --- Export Logic ---
   const generateTaskTreeText = (tasks: TaskBreakerTask[], currentDepth: number, format: 'txt' | 'md'): string => {
     let output = '';
-    const indentChar = format === 'md' ? '  ' : '  '; // Markdown uses spaces for list indentation
+    const indentChar = format === 'md' ? '  ' : '  '; 
 
     tasks.forEach(task => {
       const prefix = format === 'md' ? (task.is_completed ? '- [x] ' : '- [ ] ') : (task.is_completed ? '[x] ' : '[ ] ');
-      const indentation = indentChar.repeat(currentDepth * 2); // Increase indent factor for md lists
+      const indentation = indentChar.repeat(currentDepth * 2); 
       output += `${indentation}${prefix}${task.text}\n`;
       if (task.subTasks && task.subTasks.length > 0) {
         output += generateTaskTreeText(task.subTasks, currentDepth + 1, format);
@@ -332,13 +359,13 @@ export function TaskBreakerTool() {
     let fileExtension = format;
     let mimeType = 'text/plain';
 
-    if (format === 'md' || format === 'email') { // email will use markdown body
+    if (format === 'md' || format === 'email') { 
       content = `# ${mainTask || "Tâche Principale Non Définie"}\n\n`;
       if(subTasks.length > 0) content += generateTaskTreeText(subTasks, 0, 'md');
       else content += "_Aucune sous-tâche définie._\n";
       fileExtension = 'md';
       mimeType = 'text/markdown';
-    } else { // txt
+    } else { 
       content = `${mainTask || "Tâche Principale Non Définie"}\n\n`;
       if(subTasks.length > 0) content += generateTaskTreeText(subTasks, 0, 'txt');
       else content += "Aucune sous-tâche définie.\n";
@@ -363,7 +390,6 @@ export function TaskBreakerTool() {
     }
   };
 
-  // --- History Logic ---
   const handleOpenSaveToHistoryDialog = () => {
     if (!mainTask.trim() && subTasks.length === 0) {
       toast({ title: "Rien à sauvegarder", description: "La tâche principale ou les sous-tâches sont vides.", variant: "destructive" });
@@ -382,11 +408,11 @@ export function TaskBreakerTool() {
       id: crypto.randomUUID(),
       name: currentBreakdownName,
       mainTaskText: mainTask,
-      subTasks: JSON.parse(JSON.stringify(subTasks)), // Deep copy
+      subTasks: JSON.parse(JSON.stringify(subTasks)),
       createdAt: new Date().toISOString(),
       intensityOnSave: intensity,
     };
-    setHistory(prev => [newHistoryEntry, ...prev].slice(0, 20)); // Keep last 20 for example
+    setHistory(prev => [newHistoryEntry, ...prev].slice(0, 20)); 
     setSaveToHistoryDialog(false);
     setCurrentBreakdownName('');
     toast({ title: "Sauvegardé dans l'historique!", description: `"${newHistoryEntry.name}" a été ajouté.`});
@@ -394,7 +420,7 @@ export function TaskBreakerTool() {
 
   const handleLoadFromHistory = (entry: SavedTaskBreakdown) => {
     setMainTask(entry.mainTaskText);
-    setSubTasks(JSON.parse(JSON.stringify(entry.subTasks))); // Deep copy
+    setSubTasks(JSON.parse(JSON.stringify(entry.subTasks))); 
     if (entry.intensityOnSave) setIntensity(entry.intensityOnSave);
     setShowHistoryDialog(false);
     toast({ title: "Chargé depuis l'historique", description: `Décomposition "${entry.name}" restaurée.`});
@@ -405,13 +431,57 @@ export function TaskBreakerTool() {
     toast({ title: "Supprimé de l'historique", variant: "destructive"});
   };
 
-  // --- Presets Logic ---
-  const handleLoadPreset = (preset: CommonTaskPreset) => {
-    setMainTask(preset.name);
-    setSubTasks([]); // Clear subtasks when loading a preset main task
+  const handleLoadSystemPreset = (preset: CommonTaskPreset) => {
+    setMainTask(preset.taskText);
+    setSubTasks([]); 
     setShowPresetsDialog(false);
-    toast({ title: "Tâche courante chargée", description: `Vous pouvez maintenant décomposer "${preset.name}".` });
+    toast({ title: "Modèle de tâche chargé", description: `Vous pouvez maintenant décomposer "${preset.name}".` });
   };
+
+  const handleClearCurrentTask = () => {
+    setMainTask('');
+    setSubTasks([]);
+    localStorage.removeItem(TASK_BREAKER_STORAGE_KEY_MAIN);
+    localStorage.removeItem(TASK_BREAKER_STORAGE_KEY_SUBTASKS);
+    setShowClearTaskDialog(false);
+    toast({ title: "Tâche actuelle effacée", description: "Les champs ont été réinitialisés.", variant: "destructive"});
+  };
+
+  const handleOpenSaveCustomPresetDialog = () => {
+    if (!mainTask.trim()) {
+      toast({ title: "Tâche principale vide", description: "Veuillez entrer une tâche principale à mémoriser.", variant: "destructive"});
+      return;
+    }
+    setNewCustomPresetNameInput(mainTask.substring(0, 50));
+    setShowSaveCustomPresetDialog(true);
+  };
+
+  const handleSaveCustomPreset = () => {
+    if (!newCustomPresetNameInput.trim()) {
+      toast({ title: "Nom de modèle requis", description: "Veuillez donner un nom à ce modèle.", variant: "destructive"});
+      return;
+    }
+    if (!mainTask.trim()) {
+        toast({ title: "Tâche principale vide", description: "La tâche principale est vide.", variant: "destructive"});
+        return;
+    }
+    const newCustomPreset: CommonTaskPreset = {
+      id: crypto.randomUUID(),
+      name: newCustomPresetNameInput,
+      taskText: mainTask,
+      isSystemPreset: false,
+    };
+    setCustomCommonPresets(prev => [newCustomPreset, ...prev]);
+    setShowSaveCustomPresetDialog(false);
+    setNewCustomPresetNameInput('');
+    toast({ title: "Modèle mémorisé!", description: `Le modèle "${newCustomPreset.name}" a été sauvegardé.`});
+  };
+  
+  const handleDeleteCustomPreset = (idToDelete: string) => {
+    setCustomCommonPresets(prev => prev.filter(p => p.id !== idToDelete));
+    toast({ title: "Modèle personnalisé supprimé", variant: "destructive"});
+  };
+
 
   const RenderTaskNode: React.FC<{ task: TaskBreakerTask; currentDepth: number }> = ({ task, currentDepth }) => {
     const isCurrentlyLoadingAI = isLoadingAI && loadingAITaskId === task.id;
@@ -481,79 +551,6 @@ export function TaskBreakerTool() {
         <IntensitySelector value={intensity} onChange={setIntensity} />
         <p className="text-sm text-muted-foreground text-center -mt-2 h-5">{intensityDescription()}</p>
         
-        <div className="flex flex-col sm:flex-row gap-2 items-start">
-            <Dialog open={showPresetsDialog} onOpenChange={setShowPresetsDialog}>
-                <DialogTrigger asChild>
-                    <Button variant="outline"><BookOpenCheck className="mr-2 h-4 w-4" /> Charger Tâche Courante</Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Charger une Tâche Courante</DialogTitle>
-                        <DialogDescription>Choisissez un exemple de tâche complexe à décomposer.</DialogDescription>
-                    </DialogHeader>
-                    <ScrollArea className="h-[300px] pr-3">
-                        <div className="space-y-2">
-                        {commonTaskPresets.map(preset => (
-                            <Button key={preset.id} variant="ghost" className="w-full justify-start text-left h-auto py-2" onClick={() => handleLoadPreset(preset)}>
-                                <div>
-                                    <p className="font-medium">{preset.name}</p>
-                                    <p className="text-xs text-muted-foreground">{preset.description}</p>
-                                </div>
-                            </Button>
-                        ))}
-                        </div>
-                    </ScrollArea>
-                    <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="secondary">Fermer</Button></DialogClose>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Button variant="outline" onClick={handleOpenSaveToHistoryDialog} disabled={(!mainTask.trim() && subTasks.length === 0)}><Save className="mr-2 h-4 w-4" /> Sauvegarder dans l'Historique</Button>
-           
-            <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
-                <DialogTrigger asChild>
-                    <Button variant="outline"><History className="mr-2 h-4 w-4" /> Voir Historique ({history.length})</Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader><DialogTitle>Historique des Décompositions</DialogTitle></DialogHeader>
-                    <ScrollArea className="h-[400px] pr-3">
-                        {history.length === 0 && <p className="text-muted-foreground text-center py-4">Votre historique est vide.</p>}
-                        <div className="space-y-3">
-                        {history.map(entry => (
-                            <Card key={entry.id} className="p-3">
-                                <CardHeader className="p-0 pb-2"><CardTitle className="text-base">{entry.name}</CardTitle></CardHeader>
-                                <CardContent className="p-0 pb-2">
-                                    <p className="text-xs text-muted-foreground truncate">Tâche principale : {entry.mainTaskText}</p>
-                                    <p className="text-xs text-muted-foreground">Sous-tâches : {entry.subTasks.length}</p>
-                                    <p className="text-xs text-muted-foreground">Sauvegardé le : {new Date(entry.createdAt).toLocaleDateString()}</p>
-                                </CardContent>
-                                <CardFooter className="p-0 flex justify-end gap-2">
-                                    <Button size="sm" variant="outline" onClick={() => handleLoadFromHistory(entry)}>Charger</Button>
-                                    <Button size="sm" variant="destructive" onClick={() => handleDeleteFromHistory(entry.id)}>Supprimer</Button>
-                                </CardFooter>
-                            </Card>
-                        ))}
-                        </div>
-                    </ScrollArea>
-                     <DialogFooter> <DialogClose asChild><Button type="button" variant="secondary">Fermer</Button></DialogClose></DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Exporter</Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <DropdownMenuLabel>Options d'Export</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleExport('txt')}>Fichier Texte (.txt)</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExport('md')}>Fichier Markdown (.md)</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExport('email')}><Mail className="mr-2 h-4 w-4" /> Envoyer par Email</DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
-        
         <div>
           <label htmlFor="main-task" className="block text-sm font-medium text-foreground mb-1">Tâche principale à décomposer :</label>
           <div className="flex gap-2 items-center">
@@ -597,11 +594,11 @@ export function TaskBreakerTool() {
                 </div>
             )}
             
-            <div className="space-y-1 max-h-[500px] overflow-y-auto pr-2 rounded-md border p-2 bg-muted/20">
+            <ScrollArea className="max-h-[500px] overflow-y-auto pr-2 rounded-md border p-2 bg-muted/20">
               {subTasks.map((task) => (
                 <RenderTaskNode key={task.id} task={task} currentDepth={0} />
               ))}
-            </div>
+            </ScrollArea>
 
             <div className="mt-4 flex gap-2">
               <Input 
@@ -618,6 +615,125 @@ export function TaskBreakerTool() {
             </div>
           </div>
         )}
+
+        {/* Action Buttons Section */}
+        <div className="mt-8 pt-6 border-t flex flex-wrap justify-center gap-3">
+            <Dialog open={showPresetsDialog} onOpenChange={setShowPresetsDialog}>
+                <DialogTrigger asChild>
+                    <Button variant="outline"><BookOpenCheck className="mr-2 h-4 w-4" /> Charger Tâche</Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Charger un Modèle de Tâche</DialogTitle>
+                        <DialogDescription>Choisissez un modèle pour démarrer ou un de vos modèles mémorisés.</DialogDescription>
+                    </DialogHeader>
+                    <ScrollArea className="h-[400px] pr-3">
+                        <Accordion type="multiple" defaultValue={['system-presets', 'custom-presets']} className="w-full">
+                            <AccordionItem value="custom-presets">
+                                <AccordionTrigger>Mes Tâches Mémorisées ({customCommonPresets.length})</AccordionTrigger>
+                                <AccordionContent>
+                                    {customCommonPresets.length === 0 && <p className="text-sm text-muted-foreground p-2">Aucun modèle personnalisé.</p>}
+                                    {customCommonPresets.map(preset => (
+                                        <div key={preset.id} className="flex items-center justify-between py-2 hover:bg-accent/50 rounded-md px-2">
+                                            <Button variant="ghost" className="flex-grow justify-start text-left h-auto" onClick={() => handleLoadSystemPreset(preset)}>
+                                                {preset.name}
+                                            </Button>
+                                            <Button variant="ghost" size="icon" onClick={() => handleDeleteCustomPreset(preset.id)} className="h-7 w-7">
+                                                <Trash2 className="h-4 w-4 text-destructive"/>
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </AccordionContent>
+                            </AccordionItem>
+                             <AccordionItem value="system-presets">
+                                <AccordionTrigger>Modèles Courants ({systemTaskPresets.length})</AccordionTrigger>
+                                <AccordionContent>
+                                    {systemTaskPresets.map(preset => (
+                                        <Button key={preset.id} variant="ghost" className="w-full justify-start text-left h-auto py-2 hover:bg-accent/50 rounded-md px-2" onClick={() => handleLoadSystemPreset(preset)}>
+                                            {preset.name}
+                                        </Button>
+                                    ))}
+                                </AccordionContent>
+                            </AccordionItem>
+                        </Accordion>
+                    </ScrollArea>
+                    <DialogFooter>
+                        <DialogClose asChild><Button type="button" variant="secondary">Fermer</Button></DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            
+            <Button variant="outline" onClick={handleOpenSaveCustomPresetDialog} disabled={!mainTask.trim()}>
+                <BookmarkPlus className="mr-2 h-4 w-4" /> Mémoriser Tâche
+            </Button>
+
+            <Button variant="outline" onClick={handleOpenSaveToHistoryDialog} disabled={(!mainTask.trim() && subTasks.length === 0)}>
+                <Save className="mr-2 h-4 w-4" /> Sauvegarder Décomposition
+            </Button>
+           
+            <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+                <DialogTrigger asChild>
+                    <Button variant="outline"><History className="mr-2 h-4 w-4" /> Historique ({history.length})</Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader><DialogTitle>Historique des Décompositions</DialogTitle></DialogHeader>
+                    <ScrollArea className="h-[400px] pr-3">
+                        {history.length === 0 && <p className="text-muted-foreground text-center py-4">Votre historique est vide.</p>}
+                        <div className="space-y-3">
+                        {history.map(entry => (
+                            <Card key={entry.id} className="p-3">
+                                <CardHeader className="p-0 pb-2"><CardTitle className="text-base">{entry.name}</CardTitle></CardHeader>
+                                <CardContent className="p-0 pb-2">
+                                    <p className="text-xs text-muted-foreground truncate">Tâche principale : {entry.mainTaskText}</p>
+                                    <p className="text-xs text-muted-foreground">Sous-tâches : {entry.subTasks.length}</p>
+                                    <p className="text-xs text-muted-foreground">Sauvegardé le : {new Date(entry.createdAt).toLocaleDateString()}</p>
+                                </CardContent>
+                                <CardFooter className="p-0 flex justify-end gap-2">
+                                    <Button size="sm" variant="outline" onClick={() => handleLoadFromHistory(entry)}>Charger</Button>
+                                    <Button size="sm" variant="destructive" onClick={() => handleDeleteFromHistory(entry.id)}>Supprimer</Button>
+                                </CardFooter>
+                            </Card>
+                        ))}
+                        </div>
+                    </ScrollArea>
+                     <DialogFooter> <DialogClose asChild><Button type="button" variant="secondary">Fermer</Button></DialogClose></DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Exporter</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                    <DropdownMenuLabel>Options d'Export</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => handleExport('txt')}>Fichier Texte (.txt)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExport('md')}>Fichier Markdown (.md)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExport('email')}><Mail className="mr-2 h-4 w-4" /> Envoyer par Email</DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+            
+            <AlertDialog open={showClearTaskDialog} onOpenChange={setShowClearTaskDialog}>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive" disabled={!mainTask.trim() && subTasks.length === 0}>
+                        <Eraser className="mr-2 h-4 w-4" /> Effacer Tâche Actuelle
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Êtes-vous sûr ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Cette action effacera la tâche principale et toutes ses sous-tâches. Cette action est irréversible.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleClearCurrentTask}>Oui, effacer</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </div>
+
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground text-center w-full">
@@ -628,8 +744,8 @@ export function TaskBreakerTool() {
        <Dialog open={saveToHistoryDialog} onOpenChange={setSaveToHistoryDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Sauvegarder dans l'historique</DialogTitle>
-            <DialogDescription>Donnez un nom à cette décomposition pour la retrouver plus tard.</DialogDescription>
+            <DialogTitle>Sauvegarder la Décomposition</DialogTitle>
+            <DialogDescription>Donnez un nom à cette décomposition pour la retrouver plus tard dans l'historique.</DialogDescription>
           </DialogHeader>
           <div className="py-2">
             <Label htmlFor="breakdownName">Nom de la décomposition</Label>
@@ -646,9 +762,34 @@ export function TaskBreakerTool() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showSaveCustomPresetDialog} onOpenChange={setShowSaveCustomPresetDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mémoriser la Tâche Principale</DialogTitle>
+            <DialogDescription>Donnez un nom à ce modèle de tâche pour le réutiliser facilement.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <div>
+                <Label htmlFor="customPresetName">Nom du modèle</Label>
+                <Input 
+                id="customPresetName" 
+                value={newCustomPresetNameInput} 
+                onChange={(e) => setNewCustomPresetNameInput(e.target.value)} 
+                placeholder="Ex: Rapport Mensuel, Planification Repas"
+                />
+            </div>
+            <div>
+                <Label>Tâche à mémoriser :</Label>
+                <p className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50">{mainTask || "Aucune tâche principale définie."}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
+            <Button onClick={handleSaveCustomPreset} disabled={!newCustomPresetNameInput.trim() || !mainTask.trim()}>Mémoriser</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
-
-
-    

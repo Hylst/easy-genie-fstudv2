@@ -107,14 +107,21 @@ export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 
 };
 
 
-// --- Specific types for TaskBreakerTool History ---
+// --- Specific types for TaskBreakerTool History & Presets ---
 export interface SavedTaskBreakdown {
   id: string;
   name: string; // User-given name for this saved breakdown
   mainTaskText: string;
-  subTasks: TaskBreakerTask[]; // Using TaskBreakerTask directly as subtasks have the same structure
+  subTasks: TaskBreakerTask[]; 
   createdAt: string; // ISO date string
-  intensityOnSave?: number; // Optional: intensity level at the time of saving
+  intensityOnSave?: number; 
+}
+
+export interface CommonTaskPreset {
+  id: string;
+  name: string; // Name displayed in the preset list (e.g., "Organiser un événement"). For custom, user-given.
+  taskText: string; // The actual task text to load into the mainTask input.
+  isSystemPreset?: boolean; // True for hardcoded, false/undefined for user-created (custom)
 }
 
 
