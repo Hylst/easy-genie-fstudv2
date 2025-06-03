@@ -1,3 +1,4 @@
+
 # Changelog
 
 ## Done
@@ -161,14 +162,13 @@
     - Added Export options (Text, Markdown, Email via `mailto:`).
     - Implemented "Charger une Tâche Courante" (Presets) functionality with a dialog.
     - Implemented a local history feature (using `localStorage`) to save/load/delete named task breakdowns.
-    - Updated `TaskBreakerTask` type to include `isExpanded` for UI state persistence (note: this was later revised to be client-side only for DB sync).
-    - Clarified that current task breakdown is auto-saved to `localStorage`.
+    - Clarified that current task breakdown is auto-saved (to DB if connected, or local if offline).
 - **TaskBreaker Tool Enhancements (Phase 1.1 - UI & New Actions)**:
     - Relocated action buttons to the bottom of the tool for better layout and responsive behavior.
-    - Added "Effacer Tâche Actuelle" button with confirmation to clear main task and sub-tasks.
-    - Added "Mémoriser Tâche Actuelle" button to save the current main task as a custom, named "modèle de tâche" (common preset) in `localStorage`.
-    - Updated "Charger Tâche" dialog to display system presets and custom-saved modèles, with deletion for custom ones.
-    - Adjusted type `CommonTaskPreset` for clarity.
+    - Added "Effacer Tâche Actuelle" button with confirmation to clear main task and sub-tasks (DB integrated).
+    - Added "Mémoriser Tâche Actuelle" button to save the current main task as a custom, named "modèle de tâche" (common preset) using `AppDataService` (DB integrated).
+    - Updated "Charger Tâche" dialog to display system presets and custom-saved modèles (from DB), with deletion for custom ones.
+    - Adjusted type `CommonTaskPreset` for clarity and UI mapping.
     - Fixed button overflow issue and improved responsive layout of action buttons.
 
 
@@ -184,12 +184,11 @@
     - Implement a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
     - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
-    - Consider migrating custom preset storage from `localStorage` to the database.
 - **TaskBreaker Tool Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
     - Ensure robust recursive deletion of child tasks in Supabase (currently client-side IndexedDB handles recursion, Supabase needs DB cascade or iterative delete for full robustness without it).
-    - **Phase 2**: Database integration for TaskBreaker History and Custom Common Presets (currently local).
+    - **Phase 2**: Database integration for TaskBreaker History (currently local).
 - **RoutineBuilder Tool Enhancements (Phase 2)**:
     - Consider UI for reordering routines and steps (order is saved, but no UI to change it yet).
     - Optional: Add specific time input for routines.
@@ -206,5 +205,3 @@
 - **User Profile**: Consider a dedicated user profile page for managing account details (e.g., password change, profile picture if Supabase Storage is used).
 - **Email Confirmation**: Ensure "Confirm email" is enabled in Supabase project settings for production.
 - **Password Reset**: Implement a "Forgot Password" flow using Supabase's `sendPasswordResetEmail` and a page to handle the password update.
-
-```

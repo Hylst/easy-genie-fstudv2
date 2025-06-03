@@ -81,7 +81,12 @@ export interface TaskBreakerTask extends BaseEntity {
   is_completed: boolean;
   depth: number; 
   order: number; 
-  // isExpanded is UI state, not stored in DB
+}
+
+// TaskBreakerCustomPreset as stored in the database
+export interface TaskBreakerCustomPreset extends BaseEntity {
+  name: string;
+  task_text: string;
 }
 
 
@@ -98,7 +103,6 @@ export type CreateRoutineStepDTO = Omit<RoutineStep, 'id' | 'user_id' | 'created
 
 export type CreateBrainDumpContentDTO = Omit<BrainDumpContent, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 
-// DTO for creating TaskBreakerTask, note isExpanded is removed as it's UI state
 export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'is_completed' | 'depth' | 'sync_status' | 'last_synced_at'> & { 
   is_completed?: boolean; 
   depth?: number; 
@@ -107,28 +111,34 @@ export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 
   order: number; 
 };
 
+export type CreateTaskBreakerCustomPresetDTO = Omit<TaskBreakerCustomPreset, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 
-// --- Specific types for TaskBreakerTool History & Presets (Currently LocalStorage only) ---
-// This is the TaskBreakerTask structure as used in the UI and for localStorage history
-// It includes isExpanded for UI state persistence
+
+// --- Specific types for TaskBreakerTool History & Presets ---
+// UITaskBreakerTask is for client-side tree structure, including UI state like isExpanded
 export interface UITaskBreakerTask extends TaskBreakerTask {
-  subTasks: UITaskBreakerTask[]; // For client-side tree structure
+  subTasks: UITaskBreakerTask[]; 
   isExpanded: boolean;
 }
+
+// SavedTaskBreakdown for LOCALSTORAGE HISTORY ONLY
 export interface SavedTaskBreakdown {
   id: string;
-  name: string; // User-given name for this saved breakdown
-  mainTaskText: string; // The original main task text input
-  subTasks: UITaskBreakerTask[]; // The tree of tasks including their expansion state
-  createdAt: string; // ISO date string
+  name: string; 
+  mainTaskText: string; 
+  subTasks: UITaskBreakerTask[]; 
+  createdAt: string; 
   intensityOnSave?: number; 
 }
 
+// CommonTaskPreset is used in the UI for listing system and custom presets.
+// Custom presets will be of type TaskBreakerCustomPreset from DB, then mapped to this for UI if needed.
 export interface CommonTaskPreset {
   id: string;
-  name: string; // Name displayed in the preset list (e.g., "Organiser un événement"). For custom, user-given.
-  taskText: string; // The actual task text to load into the mainTask input.
-  isSystemPreset?: boolean; // True for hardcoded, false/undefined for user-created (custom)
+  name: string; 
+  taskText: string; 
+  isSystemPreset?: boolean; 
+  // If it's a custom preset loaded from DB, 'id' will be the DB 'id'.
 }
 
 

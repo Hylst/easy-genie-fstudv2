@@ -22,6 +22,12 @@ import { TaskBreakerSupabaseService } from './supabase/task-breaker.supabase.ser
 import type { ITaskBreakerService } from './interfaces/ITaskBreakerService';
 import type { TaskBreakerTask, CreateTaskBreakerTaskDTO } from '@/types';
 
+import { TaskBreakerCustomPresetIndexedDBService } from './indexeddb/task-breaker-custom-preset.indexeddb.service';
+import { TaskBreakerCustomPresetSupabaseService } from './supabase/task-breaker-custom-preset.supabase.service';
+import type { ITaskBreakerCustomPresetService } from './interfaces/ITaskBreakerCustomPresetService';
+import type { TaskBreakerCustomPreset, CreateTaskBreakerCustomPresetDTO } from '@/types';
+
+
 import { toast } from '@/hooks/use-toast';
 
 
@@ -66,6 +72,8 @@ const brainDumpIndexedDBService = new BrainDumpIndexedDBService();
 const brainDumpSupabaseService = new BrainDumpSupabaseService();
 const taskBreakerIndexedDBService = new TaskBreakerIndexedDBService();
 const taskBreakerSupabaseService = new TaskBreakerSupabaseService();
+const taskBreakerCustomPresetIndexedDBService = new TaskBreakerCustomPresetIndexedDBService();
+const taskBreakerCustomPresetSupabaseService = new TaskBreakerCustomPresetSupabaseService();
 
 
 // --- Helper to get current user ID or throw error ---
@@ -97,8 +105,7 @@ async function handleOnlineOperation<T extends {id: string, updated_at: string},
         return serverEntity;
       } else if (operation === 'update' && id && data) {
         serverEntity = await remoteService.update(id, data as Partial<DTO>, userId);
-        // Local update needs to happen BEFORE sync status update to preserve potential unsynced changes if server update succeeded but local failed
-        const localUpdatedItem = await localService.update(id, data as Partial<DTO>, userId); // ensure this doesn't mark as 'updated' if server succeeded
+        const localUpdatedItem = await localService.update(id, data as Partial<DTO>, userId); 
         await localService.updateSyncStatus(localUpdatedItem.id, serverEntity.updated_at);
         return serverEntity;
       } else if (operation === 'delete' && id) {
@@ -106,7 +113,6 @@ async function handleOnlineOperation<T extends {id: string, updated_at: string},
         if (localService.hardDelete) {
           await localService.hardDelete(id);
         } else {
-          // Fallback if hardDelete is not explicitly defined on this local service
           await localService.delete(id, userId); 
         }
         return; 
@@ -127,14 +133,12 @@ async function handleOnlineOperation<T extends {id: string, updated_at: string},
       toast({ title: "Mode En Ligne - Opération échouée", description: `Sauvegarde locale en attente de synchronisation. Erreur: ${errorMessage}`, variant: "default", duration: 7000 });
       
       if (operation === 'add') return localService.add(data as DTO, userId);
-      if (operation === 'update' && id && data) return localService.update(id, data as Partial<DTO>, userId); // This will set sync_status to 'updated' or 'new'
-      if (operation === 'delete' && id) return localService.delete(id, userId); // This will soft delete by setting sync_status to 'deleted'
+      if (operation === 'update' && id && data) return localService.update(id, data as Partial<DTO>, userId); 
+      if (operation === 'delete' && id) return localService.delete(id, userId); 
       throw error; 
     }
   } else {
-    // Offline or no user: perform local operation, sync_status will be set by local service
     if (!userId && operation !== 'add' && operation !== 'update' && operation !== 'delete') {
-        // For operations that don't strictly require userId for local only mode (should be rare)
     } else if (!userId) {
         throw new Error("User not logged in. Operation cannot proceed.");
     }
@@ -177,10 +181,10 @@ export async function clearAllPriorityTasks(): Promise<void> {
     } catch (error) {
       console.error("Error clearing all priority tasks from Supabase, falling back to local soft delete:", error);
       toast({ title: "Erreur de suppression (Supabase)", description: "Impossible de supprimer toutes les tâches du serveur. Suppression locale effectuée.", variant: "destructive" });
-      await priorityTaskIndexedDBService.deleteAll(userId); // Soft delete all locally
+      await priorityTaskIndexedDBService.deleteAll(userId); 
     }
   } else {
-    await priorityTaskIndexedDBService.deleteAll(userId); // Soft delete all locally
+    await priorityTaskIndexedDBService.deleteAll(userId); 
   }
 }
 
@@ -193,10 +197,10 @@ export async function clearCompletedPriorityTasks(): Promise<void> {
     } catch (error) {
       console.error("Error clearing completed priority tasks from Supabase, falling back to local soft delete:", error);
       toast({ title: "Erreur de suppression (Supabase)", description: "Impossible de supprimer les tâches complétées du serveur. Suppression locale effectuée.", variant: "destructive" });
-      await priorityTaskIndexedDBService.deleteCompleted(userId); // Soft delete completed locally
+      await priorityTaskIndexedDBService.deleteCompleted(userId); 
     }
   } else {
-    await priorityTaskIndexedDBService.deleteCompleted(userId); // Soft delete completed locally
+    await priorityTaskIndexedDBService.deleteCompleted(userId); 
   }
 }
 
@@ -227,7 +231,6 @@ export async function getStepsForRoutine(routineId: string): Promise<RoutineStep
   return routineIndexedDBService.getStepsForRoutine(routineId, userId);
 }
 
-// Handle RoutineStep operations with specific logic (can't use generic handleOnlineOperation directly due to different service method signatures)
 export async function addStepToRoutine(routineId: string, stepData: CreateRoutineStepDTO): Promise<RoutineStep> {
   const userId = getRequiredUserId();
   if (_isOnline && userId) {
@@ -253,8 +256,8 @@ export async function updateRoutineStep(stepId: string, stepData: Partial<Create
    if (_isOnline && userId) {
     try {
       const serverStep = await routineSupabaseService.updateRoutineStep(stepId, stepData, userId);
-      const localUpdatedStep = await routineIndexedDBService.updateRoutineStep(stepId, stepData, userId); // update local first
-      await routineIndexedDBService.updateRoutineStepSyncStatus(localUpdatedStep.id, serverStep.updated_at); // then mark as synced
+      const localUpdatedStep = await routineIndexedDBService.updateRoutineStep(stepId, stepData, userId); 
+      await routineIndexedDBService.updateRoutineStepSyncStatus(localUpdatedStep.id, serverStep.updated_at); 
       return serverStep;
     } catch (error) {
       console.warn(`Online updateRoutineStep failed, falling back to local. Error:`, error);
@@ -333,6 +336,25 @@ export async function deleteTaskBreakerTask(id: string): Promise<void> {
   const userId = getRequiredUserId();
   await handleOnlineOperation<TaskBreakerTask, CreateTaskBreakerTaskDTO>(taskBreakerIndexedDBService, taskBreakerSupabaseService, 'delete', id, null, userId);
 }
+
+// --- TaskBreaker Custom Preset Operations ---
+export async function getAllTaskBreakerCustomPresets(userId?: string): Promise<TaskBreakerCustomPreset[]> {
+  const effectiveUserId = userId || getRequiredUserId();
+  return taskBreakerCustomPresetIndexedDBService.getAll(effectiveUserId);
+}
+export async function addTaskBreakerCustomPreset(data: CreateTaskBreakerCustomPresetDTO): Promise<TaskBreakerCustomPreset> {
+  const userId = getRequiredUserId();
+  return handleOnlineOperation<TaskBreakerCustomPreset, CreateTaskBreakerCustomPresetDTO>(taskBreakerCustomPresetIndexedDBService, taskBreakerCustomPresetSupabaseService, 'add', null, data, userId) as Promise<TaskBreakerCustomPreset>;
+}
+export async function updateTaskBreakerCustomPreset(id: string, data: Partial<CreateTaskBreakerCustomPresetDTO>): Promise<TaskBreakerCustomPreset> {
+  const userId = getRequiredUserId();
+  return handleOnlineOperation<TaskBreakerCustomPreset, CreateTaskBreakerCustomPresetDTO>(taskBreakerCustomPresetIndexedDBService, taskBreakerCustomPresetSupabaseService, 'update', id, data, userId) as Promise<TaskBreakerCustomPreset>;
+}
+export async function deleteTaskBreakerCustomPreset(id: string): Promise<void> {
+  const userId = getRequiredUserId();
+  await handleOnlineOperation<TaskBreakerCustomPreset, CreateTaskBreakerCustomPresetDTO>(taskBreakerCustomPresetIndexedDBService, taskBreakerCustomPresetSupabaseService, 'delete', id, null, userId);
+}
+
 
 // --- Synchronization Logic ---
 async function startSyncSession(userId: string): Promise<boolean> {
@@ -531,6 +553,41 @@ async function synchronizeTaskBreakerTasks(userId: string) {
   console.log("TaskBreakerTasks synchronization complete for user:", userId);
 }
 
+async function synchronizeTaskBreakerCustomPresets(userId: string) {
+  console.log("Synchronizing TaskBreakerCustomPresets for user:", userId);
+  const pendingPresets = await taskBreakerCustomPresetIndexedDBService.getPendingChanges(userId);
+
+  for (const preset of pendingPresets) {
+    try {
+      if (preset.sync_status === 'new') {
+        const serverPreset = await taskBreakerCustomPresetSupabaseService.add(preset, userId);
+        await taskBreakerCustomPresetIndexedDBService.updateSyncStatus(preset.id, serverPreset.updated_at, serverPreset.id);
+      } else if (preset.sync_status === 'updated') {
+        const serverPreset = await taskBreakerCustomPresetSupabaseService.update(preset.id, preset, userId);
+        await taskBreakerCustomPresetIndexedDBService.updateSyncStatus(preset.id, serverPreset.updated_at);
+      } else if (preset.sync_status === 'deleted') {
+        await taskBreakerCustomPresetSupabaseService.delete(preset.id, userId);
+        await taskBreakerCustomPresetIndexedDBService.hardDelete(preset.id);
+      }
+    } catch (error) {
+      console.error(`Failed to sync custom preset ${preset.id} (${preset.name}) with status ${preset.sync_status}:`, error);
+      toast({ title: `Erreur de synchronisation (Preset ${preset.name.substring(0,15)})`, description: (error as Error).message, variant: "destructive", duration: 7000 });
+    }
+  }
+
+  const serverPresets = await taskBreakerCustomPresetSupabaseService.getAll(userId);
+  await taskBreakerCustomPresetIndexedDBService.bulkUpdate(serverPresets);
+
+  const localSyncedPresets = await taskBreakerCustomPresetIndexedDBService.getAll(userId);
+  for (const localPreset of localSyncedPresets) {
+    if (localPreset.sync_status === 'synced' && !serverPresets.find(sp => sp.id === localPreset.id)) {
+      await taskBreakerCustomPresetIndexedDBService.hardDelete(localPreset.id);
+      console.log(`Removed orphaned synced local custom preset ${localPreset.id}`);
+    }
+  }
+  console.log("TaskBreakerCustomPresets synchronization complete for user:", userId);
+}
+
 
 export async function synchronizeAllData(userId: string): Promise<void> {
   if (!userId) {
@@ -545,6 +602,7 @@ export async function synchronizeAllData(userId: string): Promise<void> {
     await synchronizeRoutines(userId);
     await synchronizeBrainDumps(userId);
     await synchronizeTaskBreakerTasks(userId);
+    await synchronizeTaskBreakerCustomPresets(userId); // Added new sync
     console.log("AppDataService: All data synchronization attempts finished for user", userId);
   } catch (error) {
     errorOccurred = true;
@@ -563,16 +621,13 @@ export function initializeAppDataService(userId: string | null, isOnline?: boole
     setCurrentUserId(userId);
 
     if (typeof isOnline === 'boolean' && isOnline !== oldIsOnline) {
-        setOnlineStatus(isOnline); // This will trigger sync if moving to online with a user
+        setOnlineStatus(isOnline); 
     } else if (userId && userId !== oldUserId && getOnlineStatus()) {
         synchronizeAllData(userId).catch(error => {
              console.error("Error during sync on user change:", error);
              toast({ title: "Erreur de Synchronisation Initiale", description: "Certaines données n'ont pu être synchronisées.", variant: "destructive"});
         });
     } else if (userId && getOnlineStatus() && oldUserId === userId && typeof isOnline === 'boolean' && isOnline && !oldIsOnline) {
-        // This condition is specifically for the case where user is the same, but app just came online
-        // The setOnlineStatus call above would handle this if isOnline argument correctly reflects the new online state.
-        // This is a bit redundant but acts as a safeguard.
         synchronizeAllData(userId).catch(error => {
              console.error("Error during sync on becoming online:", error);
              toast({ title: "Erreur de Synchronisation (Mode En Ligne)", description: "Problème lors de la synchronisation des données.", variant: "destructive"});
