@@ -16,7 +16,7 @@ export interface IntensityLevel {
   description: string;
 }
 
-export type FormalizerStyle = 
+export type FormalizerStyle =
   | "Plus professionnel"
   | "Plus concis"
   | "Plus amical"
@@ -50,7 +50,7 @@ export interface PriorityTask extends BaseEntity {
   frequency?: Frequency;
   specificDate?: string; // ISO string for date part
   specificTime?: string; // HH:mm
-  isCompleted: boolean; 
+  isCompleted: boolean;
 }
 
 export interface RoutineStep extends BaseEntity {
@@ -64,7 +64,6 @@ export interface Routine extends BaseEntity {
   name: string;
   description?: string;
   days: DayOfWeek[]; // Stored as an array of strings
-  // steps are related via routine_id in RoutineStep table/store
 }
 
 export interface BrainDumpContent extends BaseEntity {
@@ -73,88 +72,72 @@ export interface BrainDumpContent extends BaseEntity {
   intensity_level_on_analysis?: number;
 }
 
-// TaskBreakerTask as stored in the database
 export interface TaskBreakerTask extends BaseEntity {
-  parent_id?: string | null; 
-  main_task_text_context?: string; // Context of the original main task for top-level items
+  parent_id?: string | null;
+  main_task_text_context?: string;
   text: string;
   is_completed: boolean;
-  depth: number; 
-  order: number; 
+  depth: number;
+  order: number;
 }
 
-// TaskBreakerCustomPreset as stored in the database
 export interface TaskBreakerCustomPreset extends BaseEntity {
   name: string;
   task_text: string;
 }
 
+// For Task Breaker History (now stored in DB)
+export interface TaskBreakerSavedBreakdown extends BaseEntity {
+  name: string;
+  main_task_text: string;
+  sub_tasks_json: string; // JSON string of UITaskBreakerTask[] structure at time of save
+  intensity_on_save?: number;
+}
 
 // --- DTOs for Create operations ---
 export type CreatePriorityTaskDTO = Omit<PriorityTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'isCompleted' | 'sync_status' | 'last_synced_at'> & { isCompleted?: boolean };
-
 export type CreateRoutineDTO = Omit<Routine, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
-
-export type CreateRoutineStepDTO = Omit<RoutineStep, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'isCompleted' | 'sync_status' | 'last_synced_at'> & { 
+export type CreateRoutineStepDTO = Omit<RoutineStep, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'isCompleted' | 'sync_status' | 'last_synced_at'> & {
   isCompleted?: boolean;
-  routine_id: string; 
-  order: number; 
+  routine_id: string;
+  order: number;
 };
-
 export type CreateBrainDumpContentDTO = Omit<BrainDumpContent, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
-
-export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'is_completed' | 'depth' | 'sync_status' | 'last_synced_at'> & { 
-  is_completed?: boolean; 
-  depth?: number; 
+export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'is_completed' | 'depth' | 'sync_status' | 'last_synced_at'> & {
+  is_completed?: boolean;
+  depth?: number;
   parent_id?: string | null;
   main_task_text_context?: string;
-  order: number; 
+  order: number;
 };
-
 export type CreateTaskBreakerCustomPresetDTO = Omit<TaskBreakerCustomPreset, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
+export type CreateTaskBreakerSavedBreakdownDTO = Omit<TaskBreakerSavedBreakdown, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 
 
-// --- Specific types for TaskBreakerTool History & Presets ---
-// UITaskBreakerTask is for client-side tree structure, including UI state like isExpanded
+// --- Specific types for TaskBreakerTool client-side UI and Presets ---
 export interface UITaskBreakerTask extends TaskBreakerTask {
-  subTasks: UITaskBreakerTask[]; 
-  isExpanded: boolean;
+  subTasks: UITaskBreakerTask[];
+  isExpanded: boolean; // UI state, not persisted directly with task, but via expandedStates
 }
 
-// SavedTaskBreakdown for LOCALSTORAGE HISTORY ONLY
-export interface SavedTaskBreakdown {
+// Used in TaskBreakerTool for system presets (text only for main task)
+export interface TaskSuggestionPreset {
   id: string;
-  name: string; 
-  mainTaskText: string; 
-  subTasks: UITaskBreakerTask[]; 
-  createdAt: string; 
-  intensityOnSave?: number; 
+  name: string;
+  taskText: string;
+  category: string;
 }
 
-// CommonTaskPreset is used in the UI for listing system and custom presets.
-// Custom presets will be of type TaskBreakerCustomPreset from DB, then mapped to this for UI if needed.
-export interface CommonTaskPreset {
-  id: string;
-  name: string; 
-  taskText: string; 
-  isSystemPreset?: boolean; 
-  // If it's a custom preset loaded from DB, 'id' will be the DB 'id'.
-}
-
-
-// For UI state, not directly for DB, might differ slightly (e.g. dates as Date objects)
-export interface UIRoutine extends Omit<Routine, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'> {
-  id: string; 
-  user_id?: string; 
-  created_at?: string | Date;
-  updated_at?: string | Date;
-  steps: UIRoutineStep[];
-  isSuggestion?: boolean;
-}
-
-export interface UIRoutineStep extends Omit<RoutineStep, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'routine_id' | 'order' | 'isCompleted' | 'sync_status' | 'last_synced_at'>
-{
-  id: string;
+// New type for pre-decomposed task presets
+export interface PreDecomposedTaskSubTask {
   text: string;
-  isCompleted: boolean;
+  is_completed?: boolean; // Optional, defaults to false
+  subTasks?: PreDecomposedTaskSubTask[];
+}
+export interface PreDecomposedTaskPreset {
+  id: string;
+  name: string;
+  mainTaskText: string;
+  category: string;
+  subTasks: PreDecomposedTaskSubTask[];
 }
