@@ -2,12 +2,12 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from 'react';
-import { useMemo } from 'react'; // Import useMemo
+import React, { useMemo } from 'react'; // Import React for React.memo
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import type { IntensityLevel } from '@/types';
 
-const intensityLevels: IntensityLevel[] = [
+const intensityLevelsData: IntensityLevel[] = [
   { value: 1, name: "Minimal", description: "Support léger." },
   { value: 2, name: "Modéré", description: "Support présent." },
   { value: 3, name: "Standard", description: "Équilibre structure/liberté." },
@@ -20,9 +20,9 @@ interface IntensitySelectorProps {
   onChange: (value: number) => void;
 }
 
-export function IntensitySelector({ value, onChange }: IntensitySelectorProps) {
-  const currentLevel = intensityLevels.find(level => level.value === value) || intensityLevels[2];
-  const sliderValue = useMemo(() => [value], [value]); // Memoize the slider value array
+const IntensitySelectorComponent = ({ value, onChange }: IntensitySelectorProps) => {
+  const currentLevel = intensityLevelsData.find(level => level.value === value) || intensityLevelsData[2];
+  const sliderValue = useMemo(() => [value], [value]);
 
   return (
     <div
@@ -43,11 +43,15 @@ export function IntensitySelector({ value, onChange }: IntensitySelectorProps) {
         min={1}
         max={5}
         step={1}
-        value={sliderValue} // Use the memoized array
+        value={sliderValue}
         onValueChange={(newValues) => onChange(newValues[0])}
         className="w-full"
       />
       <p className="text-xs text-muted-foreground h-auto min-h-[1.5em]">{currentLevel.description}</p>
     </div>
   );
-}
+};
+
+IntensitySelectorComponent.displayName = "IntensitySelector";
+
+export const IntensitySelector = React.memo(IntensitySelectorComponent);
