@@ -72,6 +72,13 @@ export interface BrainDumpContent extends BaseEntity {
   intensity_level_on_analysis?: number;
 }
 
+export interface BrainDumpHistoryEntry extends BaseEntity {
+  name: string; // User-defined or timestamp-based
+  dump_text: string;
+  analysis_text?: string;
+  intensity_level_on_analysis?: number;
+}
+
 export interface TaskBreakerTask extends BaseEntity {
   parent_id?: string | null;
   main_task_text_context?: string;
@@ -120,6 +127,8 @@ export type CreateRoutineStepDTO = Omit<RoutineStep, 'id' | 'user_id' | 'created
   order: number;
 };
 export type CreateBrainDumpContentDTO = Omit<BrainDumpContent, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
+export type CreateBrainDumpHistoryEntryDTO = Omit<BrainDumpHistoryEntry, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
+
 export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'is_completed' | 'depth' | 'sync_status' | 'last_synced_at'> & {
   is_completed?: boolean;
   depth?: number;
@@ -186,5 +195,3 @@ export interface TimeFocusSystemPreset {
 export interface TimeFocusDisplayPreset extends TimeFocusSystemPreset {
     isCustom?: boolean; // For UI distinction
 }
-
-```

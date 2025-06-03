@@ -1,9 +1,10 @@
+
 import { BrainDumpTool } from '@/components/tools/brain-dump-tool';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'BrainDump | Easy Genie',
-  description: 'Videz votre esprit et organisez vos pensées avec l\'outil BrainDump.',
+  title: 'Décharge de pensées | Easy Genie',
+  description: 'Videz votre esprit et organisez vos pensées avec l\'outil Décharge de pensées.',
 };
 
 export default function BrainDumpPage() {

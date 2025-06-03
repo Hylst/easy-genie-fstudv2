@@ -43,14 +43,23 @@
     - Visual feedback for active microphone and loading states.
 - **Attribution**: Added "Geoffroy Streit" as creator in README and Footer.
 - **Standardized Development Guide**: Created `tool_coding_method.md`.
-- **TaskBreaker Tool Renamed to "Décomposeur de Tâches"**
+- **Décomposeur de Tâches (anciennement TaskBreaker) Renaming & UI Enhancements**:
+    - Renamed "TaskBreaker" to "Décomposeur de Tâches" in UI (tool grid, page title, tool title).
+    - Renamed "Charger Tâche" button to "Suggestions de Tâches".
+    - Expanded list of system task suggestions to ~32, categorized in an Accordion.
+    - Added new button "Charger Tâche Décomposée" with ~16 pre-decomposed task models, categorized.
+    - Fixed bug related to loading from history not correctly updating the UI.
+    - Ensured "Effacer Tâche Actuelle" correctly clears the UI and focuses input.
 - **TaskBreaker Tool AI Enhancement & Recursive Breakdown**:
     - Implemented Genkit AI flow `breakdown-task-flow.ts` for "Décomposer" button to provide sub-task suggestions based on main task and intensity.
     - Updated `TaskBreakerTool` UI to call AI, display suggestions, and handle loading states.
     - Added voice input for the main task field.
     - Sub-tasks (AI-generated or manual) are saved to/loaded from localStorage.
     - **Recursive Breakdown**: Implemented ability to break down any sub-task into further sub-sub-tasks, both manually and using AI. UI updated with indentation and controls for nested tasks. State management refactored to handle tree structure. LocalStorage updated to `TASK_BREAKER_STORAGE_KEY_SUBTASKS_v2` due to structure change.
-- **PriorityGrid Renamed to "Grille des Priorités"**
+- **Grille des Priorités (anciennement PriorityGrid) Renaming & UI Enhancements**:
+    - Renamed "PriorityGrid" to "Grille des Priorités" in UI.
+    - `IntensitySelector` moved to the right of the title in `PriorityGridTool` and `TaskBreakerTool`, with reduced size and improved styling (gradient, hover effect).
+    - Text input fields in `PriorityGridTool` and `TaskBreakerTool` now have a subtle hover animation (oscillation/relief).
 - **PriorityGrid Tool Enhancements (Phase 1 - UI/UX & Basic Presets)**:
     - Updated `PriorityTask` interface to include optional `frequency`, `specificDate`, `specificTime`.
     - Enhanced the "Add Task" form with inputs for these new properties (Select for frequency, Popover Calendar for date, input type="time" for time).
@@ -134,10 +143,18 @@
     - Implemented `synchronizeRoutines`, `synchronizeBrainDumps`, `synchronizeTaskBreakerTasks` in `AppDataService`.
     - Updated main `synchronizeAllData` in `AppDataService` to orchestrate syncing for all entities.
 - **Database Integration (Phase 5: Integrate Tools - BrainDumpTool)**:
-    - Refactored `BrainDumpTool` to use `AppDataService` instead of `localStorage`.
+    - Renamed "BrainDump" to "Décharge de pensées" in UI.
+    - Reduced max-width of `BrainDumpTool` card.
+    - Refactored `BrainDumpTool` to use `AppDataService` for *active* dump instead of `localStorage`.
     - Manages a single "active" brain dump record per user session (loads most recent, updates or creates new).
     - Saves `dump_text`, `analysis_text`, and `intensity_level_on_analysis` to the database.
-    - Implemented debounced saving for `dumpText`.
+    - Implemented debounced saving for `dumpText` of the active dump.
+    - Added "Enregistrer dans l'historique" feature to `BrainDumpTool`:
+        - Creates a new table `brain_dump_history_entries` in Supabase (SQL provided).
+        - Updated Dexie schema (`db.ts`) for local history storage.
+        - Implemented `IBrainDumpHistoryService`, `BrainDumpHistoryIndexedDBService`, `BrainDumpHistorySupabaseService`.
+        - Integrated history services into `AppDataService` with sync logic (`synchronizeBrainDumpHistoryEntries`).
+        - UI: Accordion to display history, dialog to name entries, buttons to load/delete history.
     - UI disabled and appropriate messages shown if no user is logged in.
 - **Database Integration (Phase 5: Integrate Tools - RoutineBuilderTool)**:
     - Refactored `RoutineBuilderTool` to use `AppDataService` for routines and steps, removing `localStorage`.
@@ -175,6 +192,13 @@
     *   Local task state in `PriorityGridTool` is updated (by re-fetching) after bulk operations.
     *   UI refresh logic in `PriorityGridTool` (calling `fetchTasks()`) after add, delete, update, toggle complete to ensure UI consistency.
     *   **Database Integration for Custom Presets**: Integrated `PriorityGridCustomPreset` with `AppDataService` for Supabase synchronization. `PriorityGridTool` now uses this service instead of `localStorage`.
+- **TimeFocus Tool Enhancements**:
+    - Fixed bug preventing editing of Pomodoro configuration fields.
+    - Added system presets for timer configurations (e.g., "Pomodoro Classique", "Focus Long").
+    - Implemented saving and loading of custom user-defined timer configurations (presets) via `AppDataService` (IndexedDB + Supabase).
+    - Implemented sounds generated via Web Audio API (tick, halfway, end bell, race start).
+    - Added sound toggle button with localStorage persistence.
+    - Reorganized layout for task name and Pomodoro configuration sections.
 
 
 ## To Do

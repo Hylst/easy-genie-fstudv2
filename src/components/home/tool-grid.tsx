@@ -9,7 +9,7 @@ const tools: Tool[] = [
   { id: 'taskbreaker', name: 'Décomposeur de Tâches', description: 'Le Génie décompose vos projets complexes en étapes simples et lumineuses.', href: '/task-breaker', icon: ListTree, dataAiHint: 'magic scroll' },
   { id: 'timefocus', name: 'TimeFocus', description: 'Minuteur configurable pour maintenir la concentration.', href: '/time-focus', icon: Timer, dataAiHint: 'magic hourglass' },
   { id: 'prioritygrid', name: 'Grille des Priorités', description: 'Organisez vos tâches avec la matrice d\'Eisenhower enchantée.', href: '/priority-grid', icon: LayoutGrid, dataAiHint: 'crystal grid' },
-  { id: 'braindump', name: 'BrainDump', description: 'Interface pour vider son esprit et organiser ses pensées.', href: '/brain-dump', icon: Brain, dataAiHint: 'thought cauldron' },
+  { id: 'braindump', name: 'Décharge de pensées', description: 'Un espace pour vider votre esprit. Le Génie peut ensuite analyser et organiser vos idées.', href: '/brain-dump', icon: Brain, dataAiHint: 'thought cauldron' },
   { id: 'formalizer', name: 'Formaliseur', description: 'Transforme le texte pour l\'adapter à différents styles et tons.', href: '/formalizer', icon: FileEdit, dataAiHint: 'quill writing' },
   { id: 'routinebuilder', name: 'RoutineBuilder', description: 'Création de routines quotidiennes avec rappels.', href: '/routine-builder', icon: CalendarCheck, dataAiHint: 'genie planner' },
   // { id: 'decisionhelper', name: 'DecisionHelper', description: 'Assistant pour prendre des décisions.', href: '/decision-helper', icon: GitFork, dataAiHint: 'magic compass' },

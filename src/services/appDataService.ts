@@ -17,6 +17,11 @@ import { BrainDumpSupabaseService } from './supabase/brain-dump.supabase.service
 import type { IBrainDumpService } from './interfaces/IBrainDumpService';
 import type { BrainDumpContent, CreateBrainDumpContentDTO } from '@/types';
 
+import { BrainDumpHistoryIndexedDBService } from './indexeddb/brain-dump-history.indexeddb.service';
+import { BrainDumpHistorySupabaseService } from './supabase/brain-dump-history.supabase.service';
+import type { IBrainDumpHistoryService } from './interfaces/IBrainDumpHistoryService';
+import type { BrainDumpHistoryEntry, CreateBrainDumpHistoryEntryDTO } from '@/types';
+
 import { TaskBreakerIndexedDBService } from './indexeddb/task-breaker.indexeddb.service';
 import { TaskBreakerSupabaseService } from './supabase/task-breaker.supabase.service';
 import type { ITaskBreakerService } from './interfaces/ITaskBreakerService';
@@ -85,6 +90,8 @@ const routineIndexedDBService = new RoutineIndexedDBService();
 const routineSupabaseService = new RoutineSupabaseService();
 const brainDumpIndexedDBService = new BrainDumpIndexedDBService();
 const brainDumpSupabaseService = new BrainDumpSupabaseService();
+const brainDumpHistoryIndexedDBService = new BrainDumpHistoryIndexedDBService();
+const brainDumpHistorySupabaseService = new BrainDumpHistorySupabaseService();
 const taskBreakerIndexedDBService = new TaskBreakerIndexedDBService();
 const taskBreakerSupabaseService = new TaskBreakerSupabaseService();
 const taskBreakerCustomPresetIndexedDBService = new TaskBreakerCustomPresetIndexedDBService();
@@ -310,7 +317,7 @@ export async function deleteRoutineStep(stepId: string): Promise<void> {
 }
 
 
-// --- BrainDump Operations ---
+// --- BrainDump (Active) Operations ---
 export async function getAllBrainDumps(): Promise<BrainDumpContent[]> {
   const userId = getRequiredUserId();
   return brainDumpIndexedDBService.getAll(userId);
@@ -331,6 +338,21 @@ export async function deleteBrainDump(id: string): Promise<void> {
   const userId = getRequiredUserId();
   await handleOnlineOperation<BrainDumpContent, CreateBrainDumpContentDTO>(brainDumpIndexedDBService, brainDumpSupabaseService, 'delete', id, null, userId);
 }
+
+// --- BrainDump History Operations ---
+export async function getAllBrainDumpHistoryEntries(): Promise<BrainDumpHistoryEntry[]> {
+  const userId = getRequiredUserId();
+  return brainDumpHistoryIndexedDBService.getAll(userId);
+}
+export async function addBrainDumpHistoryEntry(data: CreateBrainDumpHistoryEntryDTO): Promise<BrainDumpHistoryEntry> {
+  const userId = getRequiredUserId();
+  return handleOnlineOperation<BrainDumpHistoryEntry, CreateBrainDumpHistoryEntryDTO>(brainDumpHistoryIndexedDBService, brainDumpHistorySupabaseService, 'add', null, data, userId) as Promise<BrainDumpHistoryEntry>;
+}
+export async function deleteBrainDumpHistoryEntry(id: string): Promise<void> {
+  const userId = getRequiredUserId();
+  await handleOnlineOperation<BrainDumpHistoryEntry, CreateBrainDumpHistoryEntryDTO>(brainDumpHistoryIndexedDBService, brainDumpHistorySupabaseService, 'delete', id, null, userId);
+}
+
 
 // --- TaskBreaker Operations ---
 export async function getAllTaskBreakerTasks(): Promise<TaskBreakerTask[]> {
@@ -567,7 +589,7 @@ async function synchronizeRoutines(userId: string) {
 }
 
 async function synchronizeBrainDumps(userId: string) {
-  console.log("Synchronizing BrainDumps for user:", userId);
+  console.log("Synchronizing BrainDumps (active) for user:", userId);
   const pendingDumps = await brainDumpIndexedDBService.getPendingChanges(userId);
   for (const dump of pendingDumps) {
     try {
@@ -583,7 +605,7 @@ async function synchronizeBrainDumps(userId: string) {
       }
     } catch (error) {
       console.error(`Failed to sync brain dump ${dump.id} with status ${dump.sync_status}:`, error);
-      toast({ title: `Erreur de synchronisation (BrainDump)`, description: (error as Error).message, variant: "destructive", duration: 7000 });
+      toast({ title: `Erreur de synchronisation (Décharge de Pensées)`, description: (error as Error).message, variant: "destructive", duration: 7000 });
     }
   }
   const serverDumps = await brainDumpSupabaseService.getAll(userId);
@@ -595,8 +617,41 @@ async function synchronizeBrainDumps(userId: string) {
           await brainDumpIndexedDBService.hardDelete(localDump.id);
       }
   }
-  console.log("BrainDumps synchronization complete for user:", userId);
+  console.log("BrainDumps (active) synchronization complete for user:", userId);
 }
+
+async function synchronizeBrainDumpHistoryEntries(userId: string) {
+  console.log("Synchronizing BrainDumpHistoryEntries for user:", userId);
+  const pendingEntries = await brainDumpHistoryIndexedDBService.getPendingChanges(userId);
+  for (const entry of pendingEntries) {
+    try {
+      if (entry.sync_status === 'new') {
+        const serverEntry = await brainDumpHistorySupabaseService.add(entry, userId);
+        await brainDumpHistoryIndexedDBService.updateSyncStatus(entry.id, serverEntry.updated_at, serverEntry.id);
+      } else if (entry.sync_status === 'updated') {
+        const serverEntry = await brainDumpHistorySupabaseService.update(entry.id, entry, userId);
+        await brainDumpHistoryIndexedDBService.updateSyncStatus(entry.id, serverEntry.updated_at);
+      } else if (entry.sync_status === 'deleted') {
+        await brainDumpHistorySupabaseService.delete(entry.id, userId);
+        await brainDumpHistoryIndexedDBService.hardDelete(entry.id);
+      }
+    } catch (error) {
+      console.error(`Failed to sync BrainDump history entry ${entry.id} (${entry.name}) with status ${entry.sync_status}:`, error);
+      toast({ title: `Erreur de synchronisation (Historique Décharge ${entry.name.substring(0,15)})`, description: (error as Error).message, variant: "destructive", duration: 7000 });
+    }
+  }
+  const serverEntries = await brainDumpHistorySupabaseService.getAll(userId);
+  await brainDumpHistoryIndexedDBService.bulkUpdate(serverEntries);
+
+  const localSyncedEntries = await brainDumpHistoryIndexedDBService.getAll(userId);
+  for (const localEntry of localSyncedEntries) {
+      if (localEntry.sync_status === 'synced' && !serverEntries.find(se => se.id === localEntry.id)) {
+          await brainDumpHistoryIndexedDBService.hardDelete(localEntry.id);
+      }
+  }
+  console.log("BrainDumpHistoryEntries synchronization complete for user:", userId);
+}
+
 
 async function synchronizeTaskBreakerTasks(userId: string) {
   console.log("Synchronizing TaskBreakerTasks for user:", userId);
@@ -790,11 +845,12 @@ export async function synchronizeAllData(userId: string): Promise<void> {
     await synchronizePriorityTasks(userId);
     await synchronizeRoutines(userId);
     await synchronizeBrainDumps(userId);
+    await synchronizeBrainDumpHistoryEntries(userId); // Added new sync
     await synchronizeTaskBreakerTasks(userId);
     await synchronizeTaskBreakerCustomPresets(userId);
     await synchronizeTaskBreakerSavedBreakdowns(userId);
     await synchronizePriorityGridCustomPresets(userId);
-    await synchronizeTimeFocusPresets(userId); // Added new sync
+    await synchronizeTimeFocusPresets(userId);
     console.log("AppDataService: All data synchronization attempts finished for user", userId);
   } catch (error) {
     errorOccurred = true;
