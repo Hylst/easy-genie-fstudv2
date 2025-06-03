@@ -573,19 +573,16 @@ export function PriorityGridTool() {
   return (
     <TooltipProvider>
       <Card className="w-full max-w-5xl mx-auto shadow-xl">
-        <CardHeader>
-          <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
-            <div className="flex-grow">
-              <CardTitle className="text-3xl font-bold text-primary mb-1">Grille des Priorités Magique</CardTitle>
-              <CardDescription>Organisez vos tâches avec la matrice d'Eisenhower. {user ? (isOnline ? "Mode En Ligne." : "Mode Hors Ligne.") : "Non connecté."}</CardDescription>
-            </div>
-            <div className="w-full md:w-auto md:min-w-[300px] md:max-w-xs lg:max-w-sm shrink-0">
-              <IntensitySelector value={intensity} onChange={setIntensity} />
-            </div>
+        <CardHeader className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+          <div className="flex-grow">
+            <CardTitle className="text-3xl font-bold text-primary mb-1">Grille des Priorités Magique</CardTitle>
+            <CardDescription>Organisez vos tâches avec la matrice d'Eisenhower. {user ? (isOnline ? "Mode En Ligne." : "Mode Hors Ligne.") : "Non connecté."}</CardDescription>
+          </div>
+          <div className="w-full md:w-auto md:min-w-[300px] md:max-w-xs lg:max-w-sm shrink-0">
+            <IntensitySelector value={intensity} onChange={setIntensity} />
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* IntensitySelector was here, now moved to header */}
 
           <Card className="p-4 sm:p-6 bg-card shadow-md">
             <CardTitle className="text-xl mb-1 text-primary">Ajouter une Tâche</CardTitle>
@@ -599,7 +596,7 @@ export function PriorityGridTool() {
                   value={newTaskText}
                   onChange={(e) => setNewTaskText(e.target.value)}
                   placeholder="Ex: Répondre aux e-mails importants"
-                  className="w-full mt-1"
+                  className="w-full mt-1 transition-all duration-200 ease-in-out hover:shadow-lg hover:animate-subtle-shake transform hover:scale-[1.01]"
                   required
                   disabled={!user || isSubmitting || isBulkDeleting}
                 />
@@ -884,6 +881,7 @@ export function PriorityGridTool() {
                 onChange={(e) => setEditText(e.target.value)}
                 required
                 disabled={isSubmitting || !user}
+                className="transition-all duration-200 ease-in-out hover:shadow-lg hover:animate-subtle-shake transform hover:scale-[1.01]"
               />
             </div>
             <div className="space-y-1">

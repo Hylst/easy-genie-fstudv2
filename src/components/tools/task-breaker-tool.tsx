@@ -1241,7 +1241,7 @@ export function TaskBreakerTool() {
           <Input
             value={task.text}
             onChange={(e) => handleSubTaskTextChange(task.id, e.target.value)}
-            className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed ? 'line-through text-muted-foreground' : ''}`}
+            className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed ? 'line-through text-muted-foreground' : ''} transition-all duration-200 ease-in-out hover:shadow-inner hover:animate-subtle-shake transform hover:scale-[1.005]`}
             disabled={isSubmitting || isLoadingAI || !user}
           />
           <Button variant="ghost" size="icon" onClick={() => handleGenieBreakdown(task.text, task.id)} aria-label="Décomposer cette tâche avec le Génie" disabled={isCurrentlyLoadingAI || isLoadingAI || isSubmitting || !user} className="h-6 w-6 p-0 shrink-0">
@@ -1258,7 +1258,7 @@ export function TaskBreakerTool() {
             value={newChildSubTaskText[task.id] || ''}
             onChange={(e) => setNewChildSubTaskText(prev => ({ ...prev, [task.id]: e.target.value }))}
             placeholder="Ajouter une sous-tâche ici..."
-            className="flex-grow h-8 text-xs"
+            className="flex-grow h-8 text-xs transition-all duration-200 ease-in-out hover:shadow-md hover:animate-subtle-shake transform hover:scale-[1.005]"
             onKeyPress={(e) => { if (e.key === 'Enter' && !isLoadingAI && !isSubmitting) handleAddManualSubTask(task.id); }}
             disabled={isLoadingAI || isSubmitting || !user}
           />
@@ -1282,8 +1282,7 @@ export function TaskBreakerTool() {
 
   return (
     <Card className="w-full max-w-3xl mx-auto shadow-xl">
-      <CardHeader>
-        <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+      <CardHeader className="flex flex-col md:flex-row justify-between md:items-start gap-4">
           <div className="flex-grow">
             <CardTitle className="text-3xl font-bold text-primary mb-1">Décomposeur de Tâches Magique</CardTitle>
             <CardDescription>
@@ -1294,11 +1293,8 @@ export function TaskBreakerTool() {
           <div className="w-full md:w-auto md:min-w-[300px] md:max-w-xs lg:max-w-sm shrink-0">
             <IntensitySelector value={intensity} onChange={setIntensity} />
           </div>
-        </div>
-      </CardHeader>
+        </CardHeader>
       <CardContent className="space-y-6">
-        {/* IntensitySelector was here, now moved to header */}
-        {/* <p className="text-sm text-muted-foreground text-center -mt-2 h-5">{intensityDescription()}</p> */}
 
         {!user && (
             <Card className="p-6 bg-yellow-50 border-yellow-300 text-yellow-700 text-center">
@@ -1318,7 +1314,7 @@ export function TaskBreakerTool() {
                   value={mainTaskInput}
                   onChange={(e) => setMainTaskInput(e.target.value)}
                   placeholder="Ex: Planifier un voyage épique"
-                  className="flex-grow"
+                  className="flex-grow transition-all duration-200 ease-in-out hover:shadow-lg hover:animate-subtle-shake transform hover:scale-[1.01]"
                   rows={2}
                   disabled={isLoadingAI || isListening || isSubmitting || isLoadingData}
                 />
@@ -1372,7 +1368,7 @@ export function TaskBreakerTool() {
                       value={newDirectSubTaskText}
                       onChange={(e) => setNewDirectSubTaskText(e.target.value)}
                       placeholder="Ajouter une sous-tâche manuellement à la tâche principale"
-                      className="flex-grow"
+                      className="flex-grow transition-all duration-200 ease-in-out hover:shadow-md hover:animate-subtle-shake transform hover:scale-[1.01]"
                       onKeyPress={(e) => {if (e.key === 'Enter' && !isLoadingAI && !isSubmitting && newDirectSubTaskText.trim()) handleAddManualSubTask(null);}}
                       disabled={isLoadingAI || isSubmitting || !user}
                     />

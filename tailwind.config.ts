@@ -82,11 +82,19 @@ export default {
   				to: {
   					height: '0'
   				}
-  			}
+  			},
+        'subtle-shake': {
+          '0%, 100%': { transform: 'translateX(0) rotate(0)' },
+          '20%': { transform: 'translateX(-1px) rotate(-0.2deg)' },
+          '40%': { transform: 'translateX(1px) rotate(0.2deg)' },
+          '60%': { transform: 'translateX(-1px) rotate(0)' },
+          '80%': { transform: 'translateX(1px) rotate(-0.2deg)' },
+        }
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up': 'accordion-up 0.2s ease-out',
+        'subtle-shake': 'subtle-shake 0.4s ease-in-out',
   		}
   	}
   },
