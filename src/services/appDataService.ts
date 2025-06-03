@@ -27,6 +27,11 @@ import { TaskBreakerCustomPresetSupabaseService } from './supabase/task-breaker-
 import type { ITaskBreakerCustomPresetService } from './interfaces/ITaskBreakerCustomPresetService';
 import type { TaskBreakerCustomPreset, CreateTaskBreakerCustomPresetDTO } from '@/types';
 
+import { TaskBreakerSavedBreakdownIndexedDBService } from './indexeddb/task-breaker-saved-breakdown.indexeddb.service';
+import { TaskBreakerSavedBreakdownSupabaseService } from './supabase/task-breaker-saved-breakdown.supabase.service';
+import type { ITaskBreakerSavedBreakdownService } from './interfaces/ITaskBreakerSavedBreakdownService';
+import type { TaskBreakerSavedBreakdown, CreateTaskBreakerSavedBreakdownDTO } from '@/types';
+
 
 import { toast } from '@/hooks/use-toast';
 
@@ -74,6 +79,8 @@ const taskBreakerIndexedDBService = new TaskBreakerIndexedDBService();
 const taskBreakerSupabaseService = new TaskBreakerSupabaseService();
 const taskBreakerCustomPresetIndexedDBService = new TaskBreakerCustomPresetIndexedDBService();
 const taskBreakerCustomPresetSupabaseService = new TaskBreakerCustomPresetSupabaseService();
+const taskBreakerSavedBreakdownIndexedDBService = new TaskBreakerSavedBreakdownIndexedDBService();
+const taskBreakerSavedBreakdownSupabaseService = new TaskBreakerSavedBreakdownSupabaseService();
 
 
 // --- Helper to get current user ID or throw error ---
@@ -355,6 +362,28 @@ export async function deleteTaskBreakerCustomPreset(id: string): Promise<void> {
   await handleOnlineOperation<TaskBreakerCustomPreset, CreateTaskBreakerCustomPresetDTO>(taskBreakerCustomPresetIndexedDBService, taskBreakerCustomPresetSupabaseService, 'delete', id, null, userId);
 }
 
+// --- TaskBreaker Saved Breakdown Operations ---
+export async function getAllTaskBreakerSavedBreakdowns(userId?: string): Promise<TaskBreakerSavedBreakdown[]> {
+  const effectiveUserId = userId || getRequiredUserId();
+  return taskBreakerSavedBreakdownIndexedDBService.getAll(effectiveUserId);
+}
+export async function addTaskBreakerSavedBreakdown(data: CreateTaskBreakerSavedBreakdownDTO): Promise<TaskBreakerSavedBreakdown> {
+  const userId = getRequiredUserId();
+  return handleOnlineOperation<TaskBreakerSavedBreakdown, CreateTaskBreakerSavedBreakdownDTO>(
+    taskBreakerSavedBreakdownIndexedDBService,
+    taskBreakerSavedBreakdownSupabaseService,
+    'add', null, data, userId
+  ) as Promise<TaskBreakerSavedBreakdown>;
+}
+export async function deleteTaskBreakerSavedBreakdown(id: string): Promise<void> {
+  const userId = getRequiredUserId();
+  await handleOnlineOperation<TaskBreakerSavedBreakdown, CreateTaskBreakerSavedBreakdownDTO>(
+    taskBreakerSavedBreakdownIndexedDBService,
+    taskBreakerSavedBreakdownSupabaseService,
+    'delete', id, null, userId
+  );
+}
+
 
 // --- Synchronization Logic ---
 async function startSyncSession(userId: string): Promise<boolean> {
@@ -588,6 +617,41 @@ async function synchronizeTaskBreakerCustomPresets(userId: string) {
   console.log("TaskBreakerCustomPresets synchronization complete for user:", userId);
 }
 
+async function synchronizeTaskBreakerSavedBreakdowns(userId: string) {
+  console.log("Synchronizing TaskBreakerSavedBreakdowns for user:", userId);
+  const pendingBreakdowns = await taskBreakerSavedBreakdownIndexedDBService.getPendingChanges(userId);
+
+  for (const breakdown of pendingBreakdowns) {
+    try {
+      if (breakdown.sync_status === 'new') {
+        const serverBreakdown = await taskBreakerSavedBreakdownSupabaseService.add(breakdown, userId);
+        await taskBreakerSavedBreakdownIndexedDBService.updateSyncStatus(breakdown.id, serverBreakdown.updated_at, serverBreakdown.id);
+      } else if (breakdown.sync_status === 'updated') {
+        // Assuming updates are not common for history items, but if they are:
+        const serverBreakdown = await taskBreakerSavedBreakdownSupabaseService.update(breakdown.id, breakdown, userId);
+        await taskBreakerSavedBreakdownIndexedDBService.updateSyncStatus(breakdown.id, serverBreakdown.updated_at);
+      } else if (breakdown.sync_status === 'deleted') {
+        await taskBreakerSavedBreakdownSupabaseService.delete(breakdown.id, userId);
+        await taskBreakerSavedBreakdownIndexedDBService.hardDelete(breakdown.id);
+      }
+    } catch (error) {
+      console.error(`Failed to sync saved breakdown ${breakdown.id} (${breakdown.name}) with status ${breakdown.sync_status}:`, error);
+      toast({ title: `Erreur de synchronisation (Historique ${breakdown.name.substring(0,15)})`, description: (error as Error).message, variant: "destructive", duration: 7000 });
+    }
+  }
+  const serverBreakdowns = await taskBreakerSavedBreakdownSupabaseService.getAll(userId);
+  await taskBreakerSavedBreakdownIndexedDBService.bulkUpdate(serverBreakdowns);
+
+  const localSyncedBreakdowns = await taskBreakerSavedBreakdownIndexedDBService.getAll(userId);
+  for (const localBreakdown of localSyncedBreakdowns) {
+    if (localBreakdown.sync_status === 'synced' && !serverBreakdowns.find(sb => sb.id === localBreakdown.id)) {
+      await taskBreakerSavedBreakdownIndexedDBService.hardDelete(localBreakdown.id);
+      console.log(`Removed orphaned synced local saved breakdown ${localBreakdown.id}`);
+    }
+  }
+  console.log("TaskBreakerSavedBreakdowns synchronization complete for user:", userId);
+}
+
 
 export async function synchronizeAllData(userId: string): Promise<void> {
   if (!userId) {
@@ -602,7 +666,8 @@ export async function synchronizeAllData(userId: string): Promise<void> {
     await synchronizeRoutines(userId);
     await synchronizeBrainDumps(userId);
     await synchronizeTaskBreakerTasks(userId);
-    await synchronizeTaskBreakerCustomPresets(userId); // Added new sync
+    await synchronizeTaskBreakerCustomPresets(userId);
+    await synchronizeTaskBreakerSavedBreakdowns(userId); // Added new sync
     console.log("AppDataService: All data synchronization attempts finished for user", userId);
   } catch (error) {
     errorOccurred = true;
@@ -636,3 +701,4 @@ export function initializeAppDataService(userId: string | null, isOnline?: boole
     
     console.log(`AppDataService initialized/updated. UserID: ${getCurrentUserId()}, Online: ${getOnlineStatus()}`);
 }
+
