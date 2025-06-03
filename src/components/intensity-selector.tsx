@@ -2,6 +2,7 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from 'react';
+import { useMemo } from 'react'; // Import useMemo
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import type { IntensityLevel } from '@/types';
@@ -21,6 +22,7 @@ interface IntensitySelectorProps {
 
 export function IntensitySelector({ value, onChange }: IntensitySelectorProps) {
   const currentLevel = intensityLevels.find(level => level.value === value) || intensityLevels[2];
+  const sliderValue = useMemo(() => [value], [value]); // Memoize the slider value array
 
   return (
     <div
@@ -41,7 +43,7 @@ export function IntensitySelector({ value, onChange }: IntensitySelectorProps) {
         min={1}
         max={5}
         step={1}
-        value={[value]}
+        value={sliderValue} // Use the memoized array
         onValueChange={(newValues) => onChange(newValues[0])}
         className="w-full"
       />
