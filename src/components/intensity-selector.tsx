@@ -23,8 +23,17 @@ export function IntensitySelector({ value, onChange }: IntensitySelectorProps) {
   const currentLevel = intensityLevels.find(level => level.value === value) || intensityLevels[2];
 
   return (
-    <div className="space-y-2 p-3 rounded-lg shadow-sm bg-gradient-to-tr from-primary/5 via-background to-accent/5 hover:from-primary/10 hover:to-accent/10 hover:shadow-md transition-all duration-300 dark:from-primary/10 dark:via-card dark:to-accent/10 dark:hover:from-primary/20 dark:hover:to-accent/20">
-      <Label htmlFor="intensity-slider" className="text-base font-semibold text-foreground">
+    <div
+      className="space-y-2 p-3 rounded-lg shadow-md 
+                 bg-gradient-to-br from-primary/10 via-background to-accent/10 
+                 dark:from-primary/15 dark:via-card dark:to-accent/15 
+                 hover:scale-[1.03] hover:shadow-xl hover:shadow-primary/25 
+                 dark:hover:shadow-primary/30 
+                 hover:from-primary/20 hover:via-accent/10 hover:to-primary/15 
+                 dark:hover:from-primary/25 dark:hover:via-accent/15 dark:hover:to-primary/20 
+                 transition-all duration-300 ease-in-out cursor-pointer"
+    >
+      <Label htmlFor="intensity-slider" className="text-base font-semibold text-foreground cursor-pointer">
         Niveau d'Énergie Magique: <span className="text-primary font-bold">{currentLevel.name}</span>
       </Label>
       <Slider
