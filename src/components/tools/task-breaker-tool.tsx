@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
-import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, SaveFloppyDiskIcon, BookOpenCheck } from 'lucide-react';
+import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, FloppyDisk, BookOpenCheck } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { breakdownTask } from '@/ai/flows/breakdown-task-flow';
 import type { TaskBreakerTask, SavedTaskBreakdown } from '@/types';
@@ -509,7 +509,7 @@ export function TaskBreakerTool() {
                 </DialogContent>
             </Dialog>
 
-            <Button variant="outline" onClick={handleOpenSaveToHistoryDialog} disabled={(!mainTask.trim() && subTasks.length === 0)}><SaveFloppyDiskIcon className="mr-2 h-4 w-4" /> Sauvegarder dans l'Historique</Button>
+            <Button variant="outline" onClick={handleOpenSaveToHistoryDialog} disabled={(!mainTask.trim() && subTasks.length === 0)}><FloppyDisk className="mr-2 h-4 w-4" /> Sauvegarder dans l'Historique</Button>
            
             <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
                 <DialogTrigger asChild>
