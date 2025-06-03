@@ -144,11 +144,14 @@
     *   AI suggestions create routines and steps via `AppDataService`.
     *   Loading states and UI disabling for logged-out users implemented.
 - **Database Integration (Phase 5: Integrate Tools - TaskBreakerTool)**:
-    *   Refactored `TaskBreakerTool` to use `AppDataService` instead of `localStorage`.
-    *   Data is fetched and a tree structure is built client-side.
-    *   All CRUD operations (AI breakdown, manual add, update, delete, complete) now use `AppDataService`.
+    *   Refactored `TaskBreakerTool` to use `AppDataService` instead of `localStorage` for task breakdown data (`TaskBreakerTask` items).
+    *   Task data (main task context and sub-tasks tree) is fetched and saved via `AppDataService`.
+    *   All CRUD operations (AI breakdown, manual add, update, delete, complete) for tasks now use `AppDataService`.
     *   Debounced saving for task text changes.
     *   UI disabled if no user is logged in.
+    *   Added `main_task_text_context` to `task_breaker_tasks` table and relevant services.
+    *   `isExpanded` UI state for tasks is now managed client-side (localStorage/component state) and not persisted to DB.
+    *   TaskBreaker History and Custom Common Presets remain local to `localStorage` for this iteration.
 - **PriorityGridTool Enhancements (Post-Database Integration)**:
     *   Added "Tout effacer" and "Effacer les tâches complétées" buttons with confirmation dialogs.
     *   Implemented bulk deletion logic in `AppDataService` and underlying services (`PriorityTaskIndexedDBService`, `PriorityTaskSupabaseService`).
@@ -158,7 +161,7 @@
     - Added Export options (Text, Markdown, Email via `mailto:`).
     - Implemented "Charger une Tâche Courante" (Presets) functionality with a dialog.
     - Implemented a local history feature (using `localStorage`) to save/load/delete named task breakdowns.
-    - Updated `TaskBreakerTask` type to include `isExpanded` for UI state persistence.
+    - Updated `TaskBreakerTask` type to include `isExpanded` for UI state persistence (note: this was later revised to be client-side only for DB sync).
     - Clarified that current task breakdown is auto-saved to `localStorage`.
 - **TaskBreaker Tool Enhancements (Phase 1.1 - UI & New Actions)**:
     - Relocated action buttons to the bottom of the tool for better layout and responsive behavior.
@@ -185,8 +188,8 @@
 - **TaskBreaker Tool Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
-    - Ensure robust recursive deletion of child tasks in Supabase (currently RLS/DB cascade dependent for remote, client-side for local).
-    - **Phase 2**: Database integration for TaskBreaker History and Custom Common Presets.
+    - Ensure robust recursive deletion of child tasks in Supabase (currently client-side IndexedDB handles recursion, Supabase needs DB cascade or iterative delete for full robustness without it).
+    - **Phase 2**: Database integration for TaskBreaker History and Custom Common Presets (currently local).
 - **RoutineBuilder Tool Enhancements (Phase 2)**:
     - Consider UI for reordering routines and steps (order is saved, but no UI to change it yet).
     - Optional: Add specific time input for routines.

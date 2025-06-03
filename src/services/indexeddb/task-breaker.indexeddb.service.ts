@@ -20,7 +20,7 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
     return this.getTable()
       .where({ user_id: userId })
       .filter(task => task.sync_status !== 'deleted')
-      .sortBy('order');
+      .sortBy('order'); // Assuming top-level tasks are ordered, depth sorting is complex here
   }
 
   async getById(id: string, userId: string): Promise<TaskBreakerTask | null> {
@@ -29,7 +29,6 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
       return null;
     }
     const task = await this.getTable().get(id);
-    // Do not filter by sync_status here for getById
     return (task && task.user_id === userId) ? task : null;
   }
 
@@ -39,7 +38,7 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
       return [];
     }
     return this.getTable()
-      .where({ user_id: userId, parent_id: parentId || Dexie.sohchen })
+      .where({ user_id: userId, parent_id: parentId || Dexie.sohchen }) // Dexie.sohchen for null parent_id
       .filter(task => task.sync_status !== 'deleted')
       .sortBy('order');
   }
@@ -55,16 +54,19 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
         if (parentTask && parentTask.user_id === userId) {
             depth = parentTask.depth + 1;
         } else {
-            console.warn(`Parent task ${data.parent_id} not found for user ${userId} during add. Defaulting depth.`);
+            console.warn(`Parent task ${data.parent_id} not found for user ${userId} during add. Defaulting depth based on DTO or to 0.`);
         }
     }
 
     const newTask: TaskBreakerTask = {
-      ...data,
       id: crypto.randomUUID(),
       user_id: userId,
+      text: data.text,
+      parent_id: data.parent_id,
+      main_task_text_context: data.main_task_text_context,
       is_completed: data.is_completed ?? false,
       depth: depth,
+      order: data.order,
       created_at: now,
       updated_at: now,
       sync_status: 'new',
@@ -92,14 +94,14 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
             const parentTask = await this.getTable().get(data.parent_id);
             depth = (parentTask && parentTask.user_id === userId) ? parentTask.depth + 1 : 0;
         }
-    } else if (data.depth !== undefined) {
+    } else if (data.depth !== undefined) { // Allow explicit depth update if parent_id not changing
         depth = data.depth;
     }
 
     const updatedTaskData: TaskBreakerTask = {
       ...existingTask,
-      ...data,
-      depth: depth,
+      ...data, // Apply all partial data
+      depth: depth, // Calculated or explicitly passed depth
       updated_at: now,
       sync_status: existingTask.sync_status === 'new' ? 'new' : 'updated',
     };
@@ -112,7 +114,7 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
     for (const child of children) {
       if (child.sync_status === 'new') {
         await this.hardDelete(child.id); // Hard delete if it was never synced
-      } else {
+      } else if (child.sync_status !== 'deleted') { // Avoid re-marking if already deleted
         await this.getTable().update(child.id, { sync_status: 'deleted', updated_at: new Date().toISOString() });
         await this.recursivelySoftDeleteChildren(child.id, userId); // Recurse for grandchildren
       }
@@ -129,16 +131,15 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
     }
 
     if (existingTask.sync_status === 'new') {
-      await this.hardDelete(id); // This will also hard delete children recursively
+      await this.hardDelete(id); 
     } else {
-      // Soft delete the task and its children
       await this.getTable().update(id, { sync_status: 'deleted', updated_at: new Date().toISOString() });
       await this.recursivelySoftDeleteChildren(id, userId);
     }
   }
 
-  // --- Sync Helper Methods ---
   async getPendingChanges(userId: string): Promise<TaskBreakerTask[]> {
+    if (!userId) return [];
     return this.getTable()
       .where({ user_id: userId })
       .and(task => ['new', 'updated', 'deleted'].includes(task.sync_status!))
@@ -151,27 +152,42 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
       last_synced_at: serverTimestamp,
       updated_at: serverTimestamp, 
     };
+    
+    const localItem = await this.getTable().get(id);
+    if (!localItem) {
+        console.warn(`TaskBreakerIndexedDBService.updateSyncStatus: Local item with id ${id} not found.`);
+        // If newServerId exists, we could try to put a new item, but it might lack full data.
+        // This scenario suggests a potential inconsistency. For now, we'll log and skip.
+        return;
+    }
+
     if (newServerId && newServerId !== id) {
-       // This is complex if IDs change for hierarchical data due to parent_id references.
-       // Assume IDs are stable for now. A real ID change would need careful migration.
-       console.warn(`TaskBreakerTask sync for ID ${id} received new server ID ${newServerId}. This is not fully handled for parent_id consistency.`);
-       await this.getTable().update(id, {...updateData, id: newServerId});
+      // This implies the server assigned a new ID (e.g., during an add operation where client-generated ID wasn't used or was overridden).
+      // We need to delete the old local item and add/update with the new server ID.
+      await this.getTable().delete(id);
+      const newItemWithServerId: TaskBreakerTask = {
+          ...localItem, // Spread original local data
+          ...updateData, // Spread sync status and server timestamp
+          id: newServerId, // Crucially, use the new server ID
+      };
+      await this.getTable().put(newItemWithServerId);
+      console.log(`TaskBreakerIndexedDB: Synced local item ${id} to server ID ${newServerId}`);
     } else {
-       await this.getTable().update(id, updateData);
+      await this.getTable().update(id, updateData);
     }
   }
   
   private async recursivelyHardDeleteChildren(parentId: string): Promise<void> {
     const children = await this.getTable().where({ parent_id: parentId }).toArray();
     for (const child of children) {
-      await this.recursivelyHardDeleteChildren(child.id); // Recurse first
-      await this.getTable().delete(child.id); // Then delete child
+      await this.recursivelyHardDeleteChildren(child.id); 
+      await this.getTable().delete(child.id); 
     }
   }
   
   async hardDelete(id: string): Promise<void> {
-    await this.recursivelyHardDeleteChildren(id); // Delete all children first
-    await this.getTable().delete(id); // Then delete the task itself
+    await this.recursivelyHardDeleteChildren(id); 
+    await this.getTable().delete(id); 
   }
 
   async bulkUpdate(items: TaskBreakerTask[]): Promise<void> {

@@ -73,14 +73,15 @@ export interface BrainDumpContent extends BaseEntity {
   intensity_level_on_analysis?: number;
 }
 
+// TaskBreakerTask as stored in the database
 export interface TaskBreakerTask extends BaseEntity {
   parent_id?: string | null; 
-  main_task_text_context?: string; 
+  main_task_text_context?: string; // Context of the original main task for top-level items
   text: string;
   is_completed: boolean;
   depth: number; 
   order: number; 
-  isExpanded?: boolean; // Added for UI state persistence for TaskBreakerTool
+  // isExpanded is UI state, not stored in DB
 }
 
 
@@ -97,22 +98,28 @@ export type CreateRoutineStepDTO = Omit<RoutineStep, 'id' | 'user_id' | 'created
 
 export type CreateBrainDumpContentDTO = Omit<BrainDumpContent, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 
-export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'is_completed' | 'depth' | 'sync_status' | 'last_synced_at' | 'isExpanded'> & { 
+// DTO for creating TaskBreakerTask, note isExpanded is removed as it's UI state
+export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'is_completed' | 'depth' | 'sync_status' | 'last_synced_at'> & { 
   is_completed?: boolean; 
   depth?: number; 
   parent_id?: string | null;
   main_task_text_context?: string;
   order: number; 
-  isExpanded?: boolean;
 };
 
 
-// --- Specific types for TaskBreakerTool History & Presets ---
+// --- Specific types for TaskBreakerTool History & Presets (Currently LocalStorage only) ---
+// This is the TaskBreakerTask structure as used in the UI and for localStorage history
+// It includes isExpanded for UI state persistence
+export interface UITaskBreakerTask extends TaskBreakerTask {
+  subTasks: UITaskBreakerTask[]; // For client-side tree structure
+  isExpanded: boolean;
+}
 export interface SavedTaskBreakdown {
   id: string;
   name: string; // User-given name for this saved breakdown
-  mainTaskText: string;
-  subTasks: TaskBreakerTask[]; 
+  mainTaskText: string; // The original main task text input
+  subTasks: UITaskBreakerTask[]; // The tree of tasks including their expansion state
   createdAt: string; // ISO date string
   intensityOnSave?: number; 
 }
