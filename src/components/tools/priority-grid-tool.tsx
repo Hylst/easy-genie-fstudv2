@@ -38,7 +38,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import type { PriorityTask, CreatePriorityTaskDTO, Frequency } from '@/types';
+import type { PriorityTask, CreatePriorityTaskDTO, Frequency, PriorityGridPresetClient, CreatePriorityGridCustomPresetDTO, PriorityGridCustomPreset } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getAllPriorityTasks,
@@ -47,6 +47,9 @@ import {
   deletePriorityTask,
   clearAllPriorityTasks,
   clearCompletedPriorityTasks,
+  getAllPriorityGridCustomPresets,
+  addPriorityGridCustomPreset,
+  deletePriorityGridCustomPreset,
 } from '@/services/appDataService';
 
 
@@ -60,23 +63,12 @@ const frequencies: { value: Frequency, label: string, description: string }[] = 
 ];
 
 type QuadrantKey = PriorityTask['quadrant'];
-const PRIORITY_GRID_CUSTOM_PRESETS_KEY = "easyGeniePriorityGridCustomPresets_v1";
 
-
-interface Preset {
-  id: string;
-  name: string;
-  text: string;
-  quadrant: QuadrantKey;
-  frequency?: Frequency;
-  specificDate?: string;
-  specificTime?: string;
-}
 
 interface PresetCategory {
   id: string;
   name: string;
-  presets: Preset[];
+  presets: PriorityGridPresetClient[];
   isCustom?: boolean;
 }
 
@@ -145,7 +137,6 @@ export function PriorityGridTool() {
   const { toast } = useToast();
   const { user, isOnline } = useAuth();
 
-  // State for new task form
   const [newTaskText, setNewTaskText] = useState<string>('');
   const [selectedQuadrant, setSelectedQuadrant] = useState<QuadrantKey>('urgentImportant');
   const [newFrequency, setNewFrequency] = useState<Frequency | undefined>(undefined);
@@ -154,13 +145,11 @@ export function PriorityGridTool() {
   const [showNewTaskAdvanced, setShowNewTaskAdvanced] = useState(false);
   const [isPresetDialogOpen, setIsPresetDialogOpen] = useState(false);
 
-  // State for saving custom preset
-  const [customPresets, setCustomPresets] = useState<Preset[]>([]);
+  const [customPresets, setCustomPresets] = useState<PriorityGridCustomPreset[]>([]);
+  const [isLoadingPresets, setIsLoadingPresets] = useState(false);
   const [isSavePresetDialogOpen, setIsSavePresetDialogOpen] = useState(false);
   const [newPresetName, setNewPresetName] = useState<string>('');
 
-
-  // State for editing task
   const [editingTask, setEditingTask] = useState<PriorityTask | null>(null);
   const [editText, setEditText] = useState<string>('');
   const [editQuadrant, setEditQuadrant] = useState<QuadrantKey>('urgentImportant');
@@ -193,35 +182,28 @@ export function PriorityGridTool() {
     }
   }, [user, toast]);
 
+  const fetchCustomPresets = useCallback(async () => {
+    if (!user) {
+      setCustomPresets([]);
+      return;
+    }
+    setIsLoadingPresets(true);
+    try {
+      const fetchedPresets = await getAllPriorityGridCustomPresets();
+      setCustomPresets(fetchedPresets);
+    } catch (error) {
+      console.error("Error fetching custom presets:", error);
+      toast({ title: "Erreur de chargement des presets personnalisés", description: (error as Error).message, variant: "destructive" });
+      setCustomPresets([]);
+    } finally {
+      setIsLoadingPresets(false);
+    }
+  }, [user, toast]);
+
   useEffect(() => {
     fetchTasks();
-  }, [fetchTasks, isOnline]);
-
-  const loadCustomPresets = useCallback(() => {
-    if (typeof window !== 'undefined') {
-        const savedCustomPresets = localStorage.getItem(PRIORITY_GRID_CUSTOM_PRESETS_KEY);
-        if (savedCustomPresets) {
-        try {
-            setCustomPresets(JSON.parse(savedCustomPresets));
-        } catch (error) {
-            console.error("Failed to parse custom presets from localStorage", error);
-            toast({ title: "Erreur de chargement des presets personnalisés", description: "Impossible de charger vos presets.", variant: "destructive"});
-        }
-        }
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    loadCustomPresets();
-  }, [loadCustomPresets]);
-
-
-  const saveCustomPresetsToLocalStorage = (updatedCustomPresets: Preset[]) => {
-    setCustomPresets(updatedCustomPresets);
-     if (typeof window !== 'undefined') {
-        localStorage.setItem(PRIORITY_GRID_CUSTOM_PRESETS_KEY, JSON.stringify(updatedCustomPresets));
-    }
-  }
+    fetchCustomPresets();
+  }, [fetchTasks, fetchCustomPresets, isOnline]); // isOnline ensures re-fetch on status change
 
   const resetNewTaskForm = () => {
     setNewTaskText('');
@@ -253,7 +235,7 @@ export function PriorityGridTool() {
         isCompleted: false,
       };
       await addPriorityTask(taskDto);
-      await fetchTasks(); // Re-fetch to ensure consistency
+      await fetchTasks(); 
       toast({ title: "Tâche ajoutée!", description: `"${newTaskText}" a été ajoutée.` });
       resetNewTaskForm();
     } catch (error) {
@@ -272,7 +254,7 @@ export function PriorityGridTool() {
     setIsSubmitting(true);
     try {
       await deletePriorityTask(id);
-      await fetchTasks(); // Re-fetch
+      await fetchTasks(); 
       toast({ title: "Tâche supprimée", variant: "destructive" });
     } catch (error) {
       console.error("Error deleting task:", error);
@@ -308,7 +290,7 @@ export function PriorityGridTool() {
         isCompleted: editingTask.isCompleted,
       };
       await updatePriorityTask(editingTask.id, taskUpdateDto);
-      await fetchTasks(); // Re-fetch
+      await fetchTasks(); 
       toast({ title: "Tâche mise à jour!" });
       setEditingTask(null);
     } catch (error) {
@@ -327,7 +309,7 @@ export function PriorityGridTool() {
     setIsSubmitting(true);
     try {
       await updatePriorityTask(task.id, { isCompleted: !task.isCompleted });
-      await fetchTasks(); // Re-fetch
+      await fetchTasks(); 
       toast({ title: task.isCompleted ? "Tâche marquée non faite" : "Tâche complétée !" });
     } catch (error) {
       console.error("Error toggling task completion:", error);
@@ -337,7 +319,7 @@ export function PriorityGridTool() {
     }
   };
 
-  const loadPresetIntoForm = (preset: Preset) => {
+  const loadPresetIntoForm = (preset: PriorityGridPresetClient) => {
     setNewTaskText(preset.text);
     setSelectedQuadrant(preset.quadrant);
     setNewFrequency(preset.frequency === "once" ? undefined : preset.frequency);
@@ -350,7 +332,9 @@ export function PriorityGridTool() {
       setNewSpecificDate(tomorrow);
     } else if (preset.specificDate) {
        try {
-        setNewSpecificDate(new Date(`${preset.specificDate}T00:00:00`));
+        // Ensure parsing YYYY-MM-DD as local date to avoid timezone issues
+        const [year, month, day] = preset.specificDate.split('-').map(Number);
+        setNewSpecificDate(new Date(year, month - 1, day));
        } catch (e) {
         setNewSpecificDate(undefined);
        }
@@ -380,7 +364,7 @@ export function PriorityGridTool() {
     setIsSavePresetDialogOpen(true);
   };
 
-  const handleSaveCustomPreset = () => {
+  const handleSaveCustomPreset = async () => {
     if (!user) {
         toast({ title: "Non connecté", description: "Veuillez vous connecter.", variant: "destructive"});
         return;
@@ -394,28 +378,63 @@ export function PriorityGridTool() {
         return;
     }
 
-    const newCustomPreset: Preset = {
-      id: crypto.randomUUID(),
-      name: newPresetName,
-      text: newTaskText,
-      quadrant: selectedQuadrant,
-      frequency: newFrequency === "once" ? undefined : newFrequency,
-      specificDate: newSpecificDate ? newSpecificDate.toISOString().split('T')[0] : undefined,
-      specificTime: newSpecificTime || undefined,
-    };
-    saveCustomPresetsToLocalStorage([...customPresets, newCustomPreset]);
-    toast({ title: "Preset Personnalisé Sauvegardé!", description: `"${newPresetName}" a été ajouté à vos presets.` });
-    setNewPresetName('');
-    setIsSavePresetDialogOpen(false);
+    setIsSubmitting(true);
+    try {
+      const presetDto: CreatePriorityGridCustomPresetDTO = {
+        name: newPresetName,
+        task_text: newTaskText,
+        quadrant: selectedQuadrant,
+        frequency: newFrequency === "once" ? undefined : newFrequency,
+        specific_date: newSpecificDate ? newSpecificDate.toISOString().split('T')[0] : undefined,
+        specific_time: newSpecificTime || undefined,
+      };
+      await addPriorityGridCustomPreset(presetDto);
+      await fetchCustomPresets(); // Re-fetch to update list
+      toast({ title: "Preset Personnalisé Sauvegardé!", description: `"${newPresetName}" a été ajouté à vos presets.` });
+      setNewPresetName('');
+      setIsSavePresetDialogOpen(false);
+    } catch (error) {
+      console.error("Error saving custom preset:", error);
+      toast({ title: "Erreur de sauvegarde du preset", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteCustomPreset = async (presetId: string) => {
+    if (!user) {
+      toast({ title: "Non connecté", description: "Veuillez vous connecter.", variant: "destructive" });
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await deletePriorityGridCustomPreset(presetId);
+      await fetchCustomPresets(); // Re-fetch to update list
+      toast({ title: "Preset personnalisé supprimé", variant: "destructive" });
+    } catch (error) {
+      console.error("Error deleting custom preset:", error);
+      toast({ title: "Erreur de suppression du preset", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const allPresetCategories = (): PresetCategory[] => {
-    const categories = [...hardcodedPresets];
+    const categories: PresetCategory[] = [...hardcodedPresets.map(c => ({...c, presets: c.presets.map(p => ({...p, isCustom: false}))}))];
     if (customPresets.length > 0) {
       categories.unshift({
         id: 'custom_presets',
         name: '🌟 Mes Presets Personnalisés',
-        presets: customPresets,
+        presets: customPresets.map(cp => ({
+            id: cp.id, // DB id
+            name: cp.name,
+            text: cp.task_text,
+            quadrant: cp.quadrant,
+            frequency: cp.frequency,
+            specificDate: cp.specific_date,
+            specificTime: cp.specific_time,
+            isCustom: true,
+        })),
         isCustom: true,
       });
     }
@@ -430,7 +449,7 @@ export function PriorityGridTool() {
     setIsBulkDeleting(true);
     try {
       await clearAllPriorityTasks();
-      await fetchTasks(); // Re-fetch
+      await fetchTasks(); 
       toast({ title: "Toutes les tâches ont été effacées !" });
     } catch (error) {
       console.error("Error clearing all tasks:", error);
@@ -448,7 +467,7 @@ export function PriorityGridTool() {
     setIsBulkDeleting(true);
     try {
       await clearCompletedPriorityTasks();
-      await fetchTasks(); // Re-fetch
+      await fetchTasks(); 
       toast({ title: "Tâches complétées effacées !" });
     } catch (error) {
       console.error("Error clearing completed tasks:", error);
@@ -461,8 +480,11 @@ export function PriorityGridTool() {
   const formatDateDisplay = (dateString?: string) => {
     if (!dateString) return '';
     try {
-      return format(new Date(`${dateString}T00:00:00`), "dd/MM/yyyy", { locale: fr });
+      // Assuming dateString is YYYY-MM-DD
+      const [year, month, day] = dateString.split('-').map(Number);
+      return format(new Date(year, month - 1, day), "dd/MM/yyyy", { locale: fr });
     } catch (e) {
+      console.error("Error formatting date:", e, "Input was:", dateString);
       return "Date invalide";
     }
   };
@@ -505,9 +527,25 @@ export function PriorityGridTool() {
                  <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" onClick={() => handleDeleteTask(task.id)} aria-label="Supprimer la tâche" className="h-7 w-7" disabled={isSubmitting || !user || isBulkDeleting}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
+                       <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="Supprimer la tâche" className="h-7 w-7" disabled={isSubmitting || !user || isBulkDeleting}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Supprimer la tâche ?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Êtes-vous sûr de vouloir supprimer la tâche "{task.text}" ? Cette action est irréversible.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Annuler</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteTask(task.id)}>Supprimer</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                     </TooltipTrigger>
                     <TooltipContent><p>Supprimer la tâche</p></TooltipContent>
                   </Tooltip>
@@ -677,8 +715,9 @@ export function PriorityGridTool() {
                   </Button>
                   <Dialog open={isPresetDialogOpen} onOpenChange={setIsPresetDialogOpen}>
                     <DialogTrigger asChild>
-                      <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={!user || isSubmitting || isBulkDeleting}>
-                        <WandSparkles className="mr-2 h-4 w-4" /> Charger un Preset
+                      <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={!user || isSubmitting || isBulkDeleting || isLoadingPresets}>
+                        {isLoadingPresets ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
+                        Charger un Preset
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-md md:max-w-lg max-h-[80vh] flex flex-col">
@@ -689,33 +728,58 @@ export function PriorityGridTool() {
                         </DialogDescription>
                       </DialogHeader>
                       <div className="flex-grow overflow-y-auto pr-2 -mr-2 py-2">
-                        <Accordion type="multiple" className="w-full space-y-2">
-                          {allPresetCategories().map(category => (
-                            <AccordionItem value={category.id} key={category.id} className="border rounded-md shadow-sm bg-card">
-                              <AccordionTrigger className="px-4 py-3 hover:no-underline text-primary font-medium">
-                                {category.name}
-                              </AccordionTrigger>
-                              <AccordionContent className="px-4 pt-0 pb-2">
-                                <div className="space-y-2 mt-2">
-                                  {category.presets.map(preset => (
-                                    <Button
-                                      key={preset.id}
-                                      variant="ghost"
-                                      className="w-full justify-start h-auto py-2.5 text-left hover:bg-accent/50"
-                                      onClick={() => loadPresetIntoForm(preset)}
-                                    >
-                                      <div>
-                                        <p className="font-medium text-foreground">{preset.name}</p>
-                                        <p className="text-xs text-muted-foreground">{preset.text} <br/>(Quadrant: {preset.quadrant.replace(/([A-Z])/g, ' $1').replace(/^./, (str) => str.toUpperCase())})</p>
+                        {isLoadingPresets && <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>}
+                        {!isLoadingPresets && (
+                          <Accordion type="multiple" defaultValue={customPresets.length > 0 ? ['custom_presets'] : ['morning_routine']} className="w-full space-y-2">
+                            {allPresetCategories().map(category => (
+                              <AccordionItem value={category.id} key={category.id} className="border rounded-md shadow-sm bg-card">
+                                <AccordionTrigger className="px-4 py-3 hover:no-underline text-primary font-medium">
+                                  {category.name} ({category.presets.length})
+                                </AccordionTrigger>
+                                <AccordionContent className="px-4 pt-0 pb-2">
+                                  <div className="space-y-1 mt-2">
+                                    {category.presets.map(preset => (
+                                      <div key={preset.id} className="flex items-center justify-between py-1 hover:bg-accent/50 rounded-md pr-1">
+                                        <Button
+                                          variant="ghost"
+                                          className="flex-grow justify-start h-auto py-1.5 text-left"
+                                          onClick={() => loadPresetIntoForm(preset)}
+                                        >
+                                          <div>
+                                            <p className="font-medium text-foreground">{preset.name}</p>
+                                            <p className="text-xs text-muted-foreground">{preset.text} <br/>(Quadrant: {preset.quadrant.replace(/([A-Z])/g, ' $1').replace(/^./, (str) => str.toUpperCase())})</p>
+                                          </div>
+                                        </Button>
+                                        {preset.isCustom && (
+                                          <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                              <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" disabled={isSubmitting}>
+                                                <Trash2 className="h-4 w-4 text-destructive"/>
+                                              </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                              <AlertDialogHeader>
+                                                <AlertDialogTitle>Supprimer ce preset ?</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                  Êtes-vous sûr de vouloir supprimer le preset personnalisé "{preset.name}" ?
+                                                </AlertDialogDescription>
+                                              </AlertDialogHeader>
+                                              <AlertDialogFooter>
+                                                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                                                <AlertDialogAction onClick={() => handleDeleteCustomPreset(preset.id)}>Supprimer</AlertDialogAction>
+                                              </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                          </AlertDialog>
+                                        )}
                                       </div>
-                                    </Button>
-                                  ))}
-                                  {category.presets.length === 0 && <p className="text-sm text-muted-foreground italic p-2">Aucun preset personnalisé sauvegardé.</p>}
-                                </div>
-                              </AccordionContent>
-                            </AccordionItem>
-                          ))}
-                        </Accordion>
+                                    ))}
+                                    {category.presets.length === 0 && <p className="text-sm text-muted-foreground italic p-2">Aucun preset dans cette catégorie.</p>}
+                                  </div>
+                                </AccordionContent>
+                              </AccordionItem>
+                            ))}
+                          </Accordion>
+                        )}
                       </div>
                       <DialogFooter className="mt-4">
                         <DialogClose asChild>
@@ -937,7 +1001,7 @@ export function PriorityGridTool() {
                 onChange={(e) => setNewPresetName(e.target.value)}
                 placeholder="Ex: Ma tâche hebdomadaire importante"
                 required
-                disabled={!user}
+                disabled={!user || isSubmitting}
               />
             </div>
             <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
@@ -951,9 +1015,10 @@ export function PriorityGridTool() {
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <Button type="button" variant="outline" onClick={() => setNewPresetName('')}>Annuler</Button>
+              <Button type="button" variant="outline" onClick={() => setNewPresetName('')} disabled={isSubmitting}>Annuler</Button>
             </DialogClose>
-            <Button type="button" onClick={handleSaveCustomPreset} disabled={!user || !newPresetName.trim() || !newTaskText.trim()}>
+            <Button type="button" onClick={handleSaveCustomPreset} disabled={!user || !newPresetName.trim() || !newTaskText.trim() || isSubmitting}>
+               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
               Sauvegarder le Preset
             </Button>
           </DialogFooter>

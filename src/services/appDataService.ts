@@ -32,6 +32,11 @@ import { TaskBreakerSavedBreakdownSupabaseService } from './supabase/task-breake
 import type { ITaskBreakerSavedBreakdownService } from './interfaces/ITaskBreakerSavedBreakdownService';
 import type { TaskBreakerSavedBreakdown, CreateTaskBreakerSavedBreakdownDTO } from '@/types';
 
+import { PriorityGridCustomPresetIndexedDBService } from './indexeddb/priority-grid-custom-preset.indexeddb.service';
+import { PriorityGridCustomPresetSupabaseService } from './supabase/priority-grid-custom-preset.supabase.service';
+import type { IPriorityGridCustomPresetService } from './interfaces/IPriorityGridCustomPresetService';
+import type { PriorityGridCustomPreset, CreatePriorityGridCustomPresetDTO } from '@/types';
+
 
 import { toast } from '@/hooks/use-toast';
 
@@ -81,6 +86,8 @@ const taskBreakerCustomPresetIndexedDBService = new TaskBreakerCustomPresetIndex
 const taskBreakerCustomPresetSupabaseService = new TaskBreakerCustomPresetSupabaseService();
 const taskBreakerSavedBreakdownIndexedDBService = new TaskBreakerSavedBreakdownIndexedDBService();
 const taskBreakerSavedBreakdownSupabaseService = new TaskBreakerSavedBreakdownSupabaseService();
+const priorityGridCustomPresetIndexedDBService = new PriorityGridCustomPresetIndexedDBService();
+const priorityGridCustomPresetSupabaseService = new PriorityGridCustomPresetSupabaseService();
 
 
 // --- Helper to get current user ID or throw error ---
@@ -384,6 +391,28 @@ export async function deleteTaskBreakerSavedBreakdown(id: string): Promise<void>
   );
 }
 
+// --- PriorityGrid Custom Preset Operations ---
+export async function getAllPriorityGridCustomPresets(userId?: string): Promise<PriorityGridCustomPreset[]> {
+  const effectiveUserId = userId || getRequiredUserId();
+  return priorityGridCustomPresetIndexedDBService.getAll(effectiveUserId);
+}
+export async function addPriorityGridCustomPreset(data: CreatePriorityGridCustomPresetDTO): Promise<PriorityGridCustomPreset> {
+  const userId = getRequiredUserId();
+  return handleOnlineOperation<PriorityGridCustomPreset, CreatePriorityGridCustomPresetDTO>(
+    priorityGridCustomPresetIndexedDBService,
+    priorityGridCustomPresetSupabaseService,
+    'add', null, data, userId
+  ) as Promise<PriorityGridCustomPreset>;
+}
+export async function deletePriorityGridCustomPreset(id: string): Promise<void> {
+  const userId = getRequiredUserId();
+  await handleOnlineOperation<PriorityGridCustomPreset, CreatePriorityGridCustomPresetDTO>(
+    priorityGridCustomPresetIndexedDBService,
+    priorityGridCustomPresetSupabaseService,
+    'delete', id, null, userId
+  );
+}
+
 
 // --- Synchronization Logic ---
 async function startSyncSession(userId: string): Promise<boolean> {
@@ -652,6 +681,40 @@ async function synchronizeTaskBreakerSavedBreakdowns(userId: string) {
   console.log("TaskBreakerSavedBreakdowns synchronization complete for user:", userId);
 }
 
+async function synchronizePriorityGridCustomPresets(userId: string) {
+  console.log("Synchronizing PriorityGridCustomPresets for user:", userId);
+  const pendingPresets = await priorityGridCustomPresetIndexedDBService.getPendingChanges(userId);
+
+  for (const preset of pendingPresets) {
+    try {
+      if (preset.sync_status === 'new') {
+        const serverPreset = await priorityGridCustomPresetSupabaseService.add(preset, userId);
+        await priorityGridCustomPresetIndexedDBService.updateSyncStatus(preset.id, serverPreset.updated_at, serverPreset.id);
+      } else if (preset.sync_status === 'updated') {
+        const serverPreset = await priorityGridCustomPresetSupabaseService.update(preset.id, preset, userId);
+        await priorityGridCustomPresetIndexedDBService.updateSyncStatus(preset.id, serverPreset.updated_at);
+      } else if (preset.sync_status === 'deleted') {
+        await priorityGridCustomPresetSupabaseService.delete(preset.id, userId);
+        await priorityGridCustomPresetIndexedDBService.hardDelete(preset.id);
+      }
+    } catch (error) {
+      console.error(`Failed to sync PG custom preset ${preset.id} (${preset.name}) with status ${preset.sync_status}:`, error);
+      toast({ title: `Erreur de synchronisation (Preset PG ${preset.name.substring(0,15)})`, description: (error as Error).message, variant: "destructive", duration: 7000 });
+    }
+  }
+  const serverPresets = await priorityGridCustomPresetSupabaseService.getAll(userId);
+  await priorityGridCustomPresetIndexedDBService.bulkUpdate(serverPresets);
+
+  const localSyncedPresets = await priorityGridCustomPresetIndexedDBService.getAll(userId);
+  for (const localPreset of localSyncedPresets) {
+    if (localPreset.sync_status === 'synced' && !serverPresets.find(sp => sp.id === localPreset.id)) {
+      await priorityGridCustomPresetIndexedDBService.hardDelete(localPreset.id);
+      console.log(`Removed orphaned synced local PG custom preset ${localPreset.id}`);
+    }
+  }
+  console.log("PriorityGridCustomPresets synchronization complete for user:", userId);
+}
+
 
 export async function synchronizeAllData(userId: string): Promise<void> {
   if (!userId) {
@@ -667,7 +730,8 @@ export async function synchronizeAllData(userId: string): Promise<void> {
     await synchronizeBrainDumps(userId);
     await synchronizeTaskBreakerTasks(userId);
     await synchronizeTaskBreakerCustomPresets(userId);
-    await synchronizeTaskBreakerSavedBreakdowns(userId); // Added new sync
+    await synchronizeTaskBreakerSavedBreakdowns(userId);
+    await synchronizePriorityGridCustomPresets(userId); // Added new sync
     console.log("AppDataService: All data synchronization attempts finished for user", userId);
   } catch (error) {
     errorOccurred = true;
@@ -701,4 +765,3 @@ export function initializeAppDataService(userId: string | null, isOnline?: boole
     
     console.log(`AppDataService initialized/updated. UserID: ${getCurrentUserId()}, Online: ${getOnlineStatus()}`);
 }
-

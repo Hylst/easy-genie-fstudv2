@@ -48,7 +48,7 @@ export interface PriorityTask extends BaseEntity {
   text: string;
   quadrant: 'urgentImportant' | 'notUrgentImportant' | 'urgentNotImportant' | 'notUrgentNotImportant';
   frequency?: Frequency;
-  specificDate?: string; // ISO string for date part
+  specificDate?: string; // ISO string for date part 'YYYY-MM-DD'
   specificTime?: string; // HH:mm
   isCompleted: boolean;
 }
@@ -86,13 +86,22 @@ export interface TaskBreakerCustomPreset extends BaseEntity {
   task_text: string;
 }
 
-// For Task Breaker History (now stored in DB)
 export interface TaskBreakerSavedBreakdown extends BaseEntity {
   name: string;
   main_task_text: string;
   sub_tasks_json: string; // JSON string of UITaskBreakerTask[] structure at time of save
   intensity_on_save?: number;
 }
+
+export interface PriorityGridCustomPreset extends BaseEntity {
+  name: string;
+  task_text: string;
+  quadrant: PriorityTask['quadrant'];
+  frequency?: Frequency;
+  specific_date?: string; // 'YYYY-MM-DD'
+  specific_time?: string; // 'HH:mm'
+}
+
 
 // --- DTOs for Create operations ---
 export type CreatePriorityTaskDTO = Omit<PriorityTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'isCompleted' | 'sync_status' | 'last_synced_at'> & { isCompleted?: boolean };
@@ -112,6 +121,7 @@ export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 
 };
 export type CreateTaskBreakerCustomPresetDTO = Omit<TaskBreakerCustomPreset, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 export type CreateTaskBreakerSavedBreakdownDTO = Omit<TaskBreakerSavedBreakdown, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
+export type CreatePriorityGridCustomPresetDTO = Omit<PriorityGridCustomPreset, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 
 
 // --- Specific types for TaskBreakerTool client-side UI and Presets ---
@@ -140,4 +150,16 @@ export interface PreDecomposedTaskPreset {
   mainTaskText: string;
   category: string;
   subTasks: PreDecomposedTaskSubTask[];
+}
+
+// Type for PriorityGrid client-side preset structure (used for both hardcoded and custom)
+export interface PriorityGridPresetClient {
+  id: string; // For custom presets, this will be the DB ID. For hardcoded, a unique string.
+  name: string;
+  text: string;
+  quadrant: PriorityTask['quadrant'];
+  frequency?: Frequency;
+  specificDate?: string; // Could be 'today', 'tomorrow', or 'YYYY-MM-DD' for hardcoded, or 'YYYY-MM-DD' from DB
+  specificTime?: string;
+  isCustom?: boolean; // To distinguish between hardcoded and user-saved
 }
