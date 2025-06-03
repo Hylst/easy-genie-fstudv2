@@ -24,8 +24,18 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
-import { Checkbox } from "@/components/ui/checkbox"; 
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { PriorityTask, CreatePriorityTaskDTO, Frequency } from '@/types';
@@ -59,8 +69,8 @@ interface Preset {
   text: string;
   quadrant: QuadrantKey;
   frequency?: Frequency;
-  specificDate?: string; 
-  specificTime?: string; 
+  specificDate?: string;
+  specificTime?: string;
 }
 
 interface PresetCategory {
@@ -162,7 +172,7 @@ export function PriorityGridTool() {
 
   const fetchTasks = useCallback(async () => {
     if (!user) {
-      setTasks([]); 
+      setTasks([]);
       setIsLoadingTasks(false);
       return;
     }
@@ -177,15 +187,15 @@ export function PriorityGridTool() {
         description: (error as Error).message || "Impossible de récupérer les tâches.",
         variant: "destructive",
       });
-      setTasks([]); 
+      setTasks([]);
     } finally {
       setIsLoadingTasks(false);
     }
-  }, [user, toast]); 
+  }, [user, toast]);
 
   useEffect(() => {
     fetchTasks();
-  }, [fetchTasks, isOnline]); 
+  }, [fetchTasks, isOnline]);
 
   const loadCustomPresets = useCallback(() => {
     if (typeof window !== 'undefined') {
@@ -242,8 +252,7 @@ export function PriorityGridTool() {
         specificTime: newSpecificTime || undefined,
         isCompleted: false,
       };
-      const addedTask = await addPriorityTask(taskDto);
-      // setTasks(prevTasks => [...prevTasks, addedTask]); // Optimistic update
+      await addPriorityTask(taskDto);
       await fetchTasks(); // Re-fetch to ensure consistency
       toast({ title: "Tâche ajoutée!", description: `"${newTaskText}" a été ajoutée.` });
       resetNewTaskForm();
@@ -260,10 +269,9 @@ export function PriorityGridTool() {
         toast({ title: "Non connecté", description: "Veuillez vous connecter pour supprimer des tâches.", variant: "destructive"});
         return;
     }
-    setIsSubmitting(true); 
+    setIsSubmitting(true);
     try {
       await deletePriorityTask(id);
-      // setTasks(prevTasks => prevTasks.filter(task => task.id !== id)); // Optimistic update
       await fetchTasks(); // Re-fetch
       toast({ title: "Tâche supprimée", variant: "destructive" });
     } catch (error) {
@@ -278,8 +286,8 @@ export function PriorityGridTool() {
     setEditingTask(task);
     setEditText(task.text);
     setEditQuadrant(task.quadrant);
-    setEditFrequency(task.frequency || undefined); 
-    setEditSpecificDate(task.specificDate ? new Date(`${task.specificDate}T00:00:00`) : undefined); 
+    setEditFrequency(task.frequency || undefined);
+    setEditSpecificDate(task.specificDate ? new Date(`${task.specificDate}T00:00:00`) : undefined);
     setEditSpecificTime(task.specificTime || '');
     setShowEditTaskAdvanced(!!(task.frequency || task.specificDate || task.specificTime));
   };
@@ -297,13 +305,12 @@ export function PriorityGridTool() {
         frequency: editFrequency === "once" ? undefined : editFrequency,
         specificDate: editSpecificDate ? editSpecificDate.toISOString().split('T')[0] : undefined,
         specificTime: editSpecificTime || undefined,
-        isCompleted: editingTask.isCompleted, 
+        isCompleted: editingTask.isCompleted,
       };
       await updatePriorityTask(editingTask.id, taskUpdateDto);
-      // setTasks(prevTasks => prevTasks.map(t => t.id === editingTask.id ? updated : t)); // Optimistic
       await fetchTasks(); // Re-fetch
       toast({ title: "Tâche mise à jour!" });
-      setEditingTask(null); 
+      setEditingTask(null);
     } catch (error) {
       console.error("Error updating task:", error);
       toast({ title: "Erreur de mise à jour", description: (error as Error).message || "Impossible de mettre à jour la tâche.", variant: "destructive"});
@@ -320,7 +327,6 @@ export function PriorityGridTool() {
     setIsSubmitting(true);
     try {
       await updatePriorityTask(task.id, { isCompleted: !task.isCompleted });
-      // setTasks(prevTasks => prevTasks.map(t => t.id === task.id ? updated : t)); // Optimistic
       await fetchTasks(); // Re-fetch
       toast({ title: task.isCompleted ? "Tâche marquée non faite" : "Tâche complétée !" });
     } catch (error) {
@@ -330,12 +336,12 @@ export function PriorityGridTool() {
         setIsSubmitting(false);
     }
   };
-  
+
   const loadPresetIntoForm = (preset: Preset) => {
     setNewTaskText(preset.text);
     setSelectedQuadrant(preset.quadrant);
     setNewFrequency(preset.frequency === "once" ? undefined : preset.frequency);
-    
+
     if (preset.specificDate === "today") {
       setNewSpecificDate(new Date());
     } else if (preset.specificDate === "tomorrow") {
@@ -346,7 +352,7 @@ export function PriorityGridTool() {
        try {
         setNewSpecificDate(new Date(`${preset.specificDate}T00:00:00`));
        } catch (e) {
-        setNewSpecificDate(undefined); 
+        setNewSpecificDate(undefined);
        }
     } else {
       setNewSpecificDate(undefined);
@@ -354,7 +360,7 @@ export function PriorityGridTool() {
 
     setNewSpecificTime(preset.specificTime || '');
     setShowNewTaskAdvanced(!!(preset.frequency || preset.specificDate || preset.specificTime));
-    setIsPresetDialogOpen(false); 
+    setIsPresetDialogOpen(false);
     toast({
       title: "Preset chargé !",
       description: `Le preset "${preset.name}" a été chargé dans le formulaire. Ajustez-le si besoin.`,
@@ -370,7 +376,7 @@ export function PriorityGridTool() {
       toast({ title: "Description de tâche vide", description: "Veuillez d'abord décrire la tâche que vous souhaitez sauvegarder comme preset.", variant: "destructive" });
       return;
     }
-    setNewPresetName(newTaskText.substring(0, 50)); 
+    setNewPresetName(newTaskText.substring(0, 50));
     setIsSavePresetDialogOpen(true);
   };
 
@@ -424,7 +430,6 @@ export function PriorityGridTool() {
     setIsBulkDeleting(true);
     try {
       await clearAllPriorityTasks();
-      // setTasks([]); // Optimistic
       await fetchTasks(); // Re-fetch
       toast({ title: "Toutes les tâches ont été effacées !" });
     } catch (error) {
@@ -443,7 +448,6 @@ export function PriorityGridTool() {
     setIsBulkDeleting(true);
     try {
       await clearCompletedPriorityTasks();
-      // setTasks(prev => prev.filter(task => !task.isCompleted)); // Optimistic
       await fetchTasks(); // Re-fetch
       toast({ title: "Tâches complétées effacées !" });
     } catch (error) {
@@ -462,7 +466,7 @@ export function PriorityGridTool() {
       return "Date invalide";
     }
   };
-  
+
   const getFrequencyLabel = (freqValue?: Frequency) => {
     if (!freqValue) return '';
     return frequencies.find(f => f.value === freqValue)?.label || '';
@@ -477,9 +481,9 @@ export function PriorityGridTool() {
           <div key={task.id} className={`bg-background/80 p-3 rounded-md shadow-sm hover:shadow-md transition-shadow ${task.isCompleted ? 'opacity-60' : ''}`}>
             <div className="flex justify-between items-start">
               <div className="flex items-center flex-grow mr-2">
-                 <Checkbox 
-                    id={`task-cb-${task.id}`} 
-                    checked={task.isCompleted} 
+                 <Checkbox
+                    id={`task-cb-${task.id}`}
+                    checked={task.isCompleted}
                     onCheckedChange={() => handleToggleComplete(task)}
                     className="mr-2 flex-shrink-0"
                     disabled={isSubmitting || !user || isBulkDeleting}
@@ -538,7 +542,7 @@ export function PriorityGridTool() {
         </CardHeader>
         <CardContent className="space-y-6">
           <IntensitySelector value={intensity} onChange={setIntensity} />
-          
+
           <Card className="p-4 sm:p-6 bg-card shadow-md">
             <CardTitle className="text-xl mb-1 text-primary">Ajouter une Tâche</CardTitle>
             {!user && <CardDescription className="mb-4 text-destructive">Veuillez vous connecter pour ajouter et gérer vos tâches.</CardDescription>}
@@ -584,11 +588,11 @@ export function PriorityGridTool() {
                       </SelectContent>
                   </Select>
               </div>
-              
-              <Button 
-                type="button" 
-                variant="link" 
-                onClick={() => setShowNewTaskAdvanced(!showNewTaskAdvanced)} 
+
+              <Button
+                type="button"
+                variant="link"
+                onClick={() => setShowNewTaskAdvanced(!showNewTaskAdvanced)}
                 className="p-0 h-auto text-sm"
                 disabled={!user || isSubmitting || isBulkDeleting}
               >
@@ -660,13 +664,13 @@ export function PriorityGridTool() {
                   </div>
                 </div>
               )}
-              
+
               <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
                 <Button type="submit" className="w-full sm:w-auto" disabled={!user || isSubmitting || isBulkDeleting}>
                   {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
                   {isSubmitting ? "Ajout..." : "Ajouter la Tâche"}
                 </Button>
-                
+
                 <div className="flex gap-2 w-full sm:w-auto">
                   <Button type="button" variant="outline" className="flex-1 sm:flex-none" onClick={handleOpenSavePresetDialog} disabled={!user || !newTaskText.trim() || isSubmitting || isBulkDeleting}>
                     <Save className="mr-2 h-4 w-4" /> Sauvegarder comme Preset
@@ -839,11 +843,11 @@ export function PriorityGridTool() {
                 </SelectContent>
               </Select>
             </div>
-            
-            <Button 
-                type="button" 
-                variant="link" 
-                onClick={() => setShowEditTaskAdvanced(!showEditTaskAdvanced)} 
+
+            <Button
+                type="button"
+                variant="link"
+                onClick={() => setShowEditTaskAdvanced(!showEditTaskAdvanced)}
                 className="p-0 h-auto text-sm justify-start mt-2"
                 disabled={isSubmitting || !user}
               >
