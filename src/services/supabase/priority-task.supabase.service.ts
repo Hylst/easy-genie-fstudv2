@@ -49,7 +49,7 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
         throw new Error("PriorityTaskSupabaseService.add: userId is required to add a task.");
     }
     
-    const taskPayload: any = {
+    const taskPayload = {
       text: taskData.text,
       quadrant: taskData.quadrant,
       frequency: taskData.frequency,
@@ -216,5 +216,39 @@ export class PriorityTaskSupabaseService implements IPriorityTaskService {
     if (count === 0) {
         console.warn(`Supabase delete for task ${id} (user ${userId}) affected 0 rows. The task might have already been deleted, or RLS policies might be preventing deletion for this user, or the task ID/user ID combination doesn't exist.`);
     }
+  }
+
+  // --- Bulk Delete Methods ---
+  async deleteAll(userId: string): Promise<void> {
+    if (!userId) {
+        throw new Error("PriorityTaskSupabaseService.deleteAll: userId is required.");
+    }
+    const { error, count } = await supabase
+        .from(this.tableName)
+        .delete()
+        .eq('user_id', userId);
+
+    if (error) {
+        console.error(`Error deleting all priority tasks for user ${userId} from Supabase:`, error);
+        throw error;
+    }
+    console.log(`Supabase deleteAll for user ${userId} affected ${count} rows.`);
+  }
+
+  async deleteCompleted(userId: string): Promise<void> {
+    if (!userId) {
+        throw new Error("PriorityTaskSupabaseService.deleteCompleted: userId is required.");
+    }
+    const { error, count } = await supabase
+        .from(this.tableName)
+        .delete()
+        .eq('user_id', userId)
+        .eq('is_completed', true);
+
+    if (error) {
+        console.error(`Error deleting completed priority tasks for user ${userId} from Supabase:`, error);
+        throw error;
+    }
+    console.log(`Supabase deleteCompleted for user ${userId} affected ${count} rows.`);
   }
 }

@@ -107,25 +107,20 @@ export class PriorityTaskIndexedDBService implements IPriorityTaskService {
     };
 
     if (newServerId && newServerId !== id) {
-      // This handles the case where a local item (with 'id') was synced and the server assigned 'newServerId'.
-      // We need to delete the old local item and add/update the item under newServerId.
-      // This is more robustly handled by ensuring the local item's ID is updated to newServerId.
       const oldItem = await this.getTable().get(id);
       if (oldItem) {
-        await this.getTable().delete(id); // Delete the old local ID entry
+        await this.getTable().delete(id); 
         const newItemWithServerId: PriorityTask = {
             ...oldItem,
-            ...updateData, // Apply sync status and timestamps
-            id: newServerId, // Critical: Update to server's ID
+            ...updateData, 
+            id: newServerId, 
         };
-        await this.getTable().put(newItemWithServerId); // Put the item with the new ID
+        await this.getTable().put(newItemWithServerId); 
         console.log(`PriorityTaskIndexedDB: Synced local item ${id} to server ID ${newServerId}`);
       } else {
-         // If oldItem not found, just put the new one. This case shouldn't happen if id was valid.
          await this.getTable().put({ ...updateData, id: newServerId } as PriorityTask);
       }
     } else {
-      // Standard case: ID is consistent, just update sync status and timestamps.
       await this.getTable().update(id, updateData);
     }
   }
@@ -136,16 +131,56 @@ export class PriorityTaskIndexedDBService implements IPriorityTaskService {
 
   async bulkUpdate(items: PriorityTask[]): Promise<void> {
     if (items.length === 0) return;
-    // When doing a bulk update from server, items are considered synced.
     const itemsToPut = items.map(item => ({
       ...item,
       sync_status: 'synced' as const,
-      last_synced_at: item.updated_at, // Use item's own updated_at as last_synced_at
+      last_synced_at: item.updated_at, 
     }));
     
     await getDb().transaction('rw', this.getTable(), async () => {
-      // Using bulkPut which is an upsert (add or update)
       await this.getTable().bulkPut(itemsToPut);
     });
+  }
+
+  // --- Bulk Delete Methods ---
+  async deleteAll(userId: string): Promise<void> { // This is a soft delete for synced items
+    const tasksToDelete = await this.getTable().where({ user_id: userId }).toArray();
+    const updates: Partial<PriorityTask>[] = [];
+    const hardDeleteIds: string[] = [];
+
+    tasksToDelete.forEach(task => {
+      if (task.sync_status === 'new') {
+        hardDeleteIds.push(task.id);
+      } else if (task.sync_status !== 'deleted') {
+        updates.push({ id: task.id, sync_status: 'deleted', updated_at: new Date().toISOString() });
+      }
+    });
+
+    if (hardDeleteIds.length > 0) await this.getTable().bulkDelete(hardDeleteIds);
+    if (updates.length > 0) await this.getTable().bulkPut(updates as PriorityTask[]);
+  }
+
+  async deleteCompleted(userId: string): Promise<void> { // This is a soft delete for synced items
+    const tasksToDelete = await this.getTable().where({ user_id: userId, isCompleted: true }).toArray();
+    const updates: Partial<PriorityTask>[] = [];
+    const hardDeleteIds: string[] = [];
+
+    tasksToDelete.forEach(task => {
+      if (task.sync_status === 'new') {
+        hardDeleteIds.push(task.id);
+      } else if (task.sync_status !== 'deleted') {
+        updates.push({ id: task.id, sync_status: 'deleted', updated_at: new Date().toISOString() });
+      }
+    });
+    if (hardDeleteIds.length > 0) await this.getTable().bulkDelete(hardDeleteIds);
+    if (updates.length > 0) await this.getTable().bulkPut(updates as PriorityTask[]);
+  }
+
+  async hardDeleteAll(userId: string): Promise<void> {
+    await this.getTable().where({ user_id: userId }).delete();
+  }
+
+  async hardDeleteCompleted(userId: string): Promise<void> {
+    await this.getTable().where({ user_id: userId, isCompleted: true }).delete();
   }
 }

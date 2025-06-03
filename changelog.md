@@ -143,11 +143,20 @@
     *   Debounced saving for step text changes.
     *   AI suggestions create routines and steps via `AppDataService`.
     *   Loading states and UI disabling for logged-out users implemented.
+- **Database Integration (Phase 5: Integrate Tools - TaskBreakerTool)**:
+    *   Refactored `TaskBreakerTool` to use `AppDataService` instead of `localStorage`.
+    *   Data is fetched and a tree structure is built client-side.
+    *   All CRUD operations (AI breakdown, manual add, update, delete, complete) now use `AppDataService`.
+    *   Debounced saving for task text changes.
+    *   UI disabled if no user is logged in.
+- **PriorityGridTool Enhancements (Post-Database Integration)**:
+    *   Added "Tout effacer" and "Effacer les tâches complétées" buttons with confirmation dialogs.
+    *   Implemented bulk deletion logic in `AppDataService` and underlying services (`PriorityTaskIndexedDBService`, `PriorityTaskSupabaseService`).
+    *   Local task state in `PriorityGridTool` is updated (by re-fetching) after bulk operations.
 
 ## To Do
 
 - **Database & Sync Implementation (High Priority)**:
-    - **Phase 5: Integrate Other Tools** (TaskBreaker) with `AppDataService` and the new data persistence layer.
     - **Phase 6: UI Feedback & Error Handling** for sync status, online/offline mode transitions, and data operation errors across all tools. (Refine existing toasts, consider global sync indicator).
     - **Phase 7: Advanced Sync Features (Future)**:
         * Delta sync from server (fetch only changes since `last_synced_at`).
@@ -158,10 +167,11 @@
     - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
     - Consider migrating custom preset storage from `localStorage` to the database.
+    - Resolve issue where UI for task completion doesn't update immediately without a page refresh (investigate state update/re-fetch logic in `handleToggleComplete`).
 - **TaskBreaker Tool Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
     - Refine UI for very deep nesting if it becomes an issue.
-    - Ensure robust recursive deletion of child tasks in Supabase (currently RLS/DB cascade dependent for remote).
+    - Ensure robust recursive deletion of child tasks in Supabase (currently RLS/DB cascade dependent for remote, client-side for local).
 - **RoutineBuilder Tool Enhancements (Phase 2)**:
     - Consider UI for reordering routines and steps (order is saved, but no UI to change it yet).
     - Optional: Add specific time input for routines.

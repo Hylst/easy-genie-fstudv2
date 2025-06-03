@@ -7,4 +7,6 @@ export interface IPriorityTaskService extends IService<PriorityTask, CreatePrior
   // Specific methods for PriorityTask can be added here if any
   // For example:
   // getTasksByQuadrant(quadrant: PriorityTask['quadrant'], userId: string): Promise<PriorityTask[]>;
+  deleteAll(userId: string): Promise<void>;
+  deleteCompleted(userId: string): Promise<void>;
 }

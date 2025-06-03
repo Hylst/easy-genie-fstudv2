@@ -168,6 +168,39 @@ export async function getPriorityTaskById(id: string): Promise<PriorityTask | nu
   return priorityTaskIndexedDBService.getById(id, userId);
 }
 
+export async function clearAllPriorityTasks(): Promise<void> {
+  const userId = getRequiredUserId();
+  if (_isOnline) {
+    try {
+      await priorityTaskSupabaseService.deleteAll(userId);
+      await priorityTaskIndexedDBService.hardDeleteAll(userId);
+    } catch (error) {
+      console.error("Error clearing all priority tasks from Supabase, falling back to local soft delete:", error);
+      toast({ title: "Erreur de suppression (Supabase)", description: "Impossible de supprimer toutes les tâches du serveur. Suppression locale effectuée.", variant: "destructive" });
+      await priorityTaskIndexedDBService.deleteAll(userId); // Soft delete all locally
+    }
+  } else {
+    await priorityTaskIndexedDBService.deleteAll(userId); // Soft delete all locally
+  }
+}
+
+export async function clearCompletedPriorityTasks(): Promise<void> {
+  const userId = getRequiredUserId();
+  if (_isOnline) {
+    try {
+      await priorityTaskSupabaseService.deleteCompleted(userId);
+      await priorityTaskIndexedDBService.hardDeleteCompleted(userId);
+    } catch (error) {
+      console.error("Error clearing completed priority tasks from Supabase, falling back to local soft delete:", error);
+      toast({ title: "Erreur de suppression (Supabase)", description: "Impossible de supprimer les tâches complétées du serveur. Suppression locale effectuée.", variant: "destructive" });
+      await priorityTaskIndexedDBService.deleteCompleted(userId); // Soft delete completed locally
+    }
+  } else {
+    await priorityTaskIndexedDBService.deleteCompleted(userId); // Soft delete completed locally
+  }
+}
+
+
 // --- Routine Operations ---
 export async function getAllRoutines(): Promise<Routine[]> {
   const userId = getRequiredUserId();
