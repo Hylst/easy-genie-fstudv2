@@ -1,3 +1,4 @@
+
 // src/services/indexeddb/priority-grid-custom-preset.indexeddb.service.ts
 "use client";
 
@@ -102,12 +103,18 @@ export class PriorityGridCustomPresetIndexedDBService implements IPriorityGridCu
     if (newServerId && newServerId !== id) {
       const oldItem = await this.getTable().get(id);
       if (oldItem) {
-        await this.getTable().delete(id);
-        const newItemWithServerId: PriorityGridCustomPreset = { ...oldItem, ...updateData, id: newServerId };
+        await this.getTable().delete(id); // Remove old client-ID version
+        const newItemWithServerId: PriorityGridCustomPreset = { 
+            ...oldItem, // original data from client-ID version
+            ...updateData, // sync status, server timestamp
+            id: newServerId // new server ID
+        };
         await this.getTable().put(newItemWithServerId);
       } else {
-        // This case should ideally not happen if an item was pending 'new'
-        await this.getTable().put({ ...updateData, id: newServerId } as PriorityGridCustomPreset);
+        // This means the local item with client_id 'id' was deleted or never existed,
+        // but we have a newServerId. This is an inconsistent state.
+        // Log a warning. Don't create a partial record.
+        console.warn(`PriorityGridCustomPresetIndexedDBService.updateSyncStatus: Local item with id ${id} not found for newServerId ${newServerId}. Record not created/updated.`);
       }
     } else {
       await this.getTable().update(id, updateData);
