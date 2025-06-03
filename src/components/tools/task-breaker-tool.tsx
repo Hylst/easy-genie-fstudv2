@@ -224,7 +224,6 @@ const preDecomposedTaskPresets: PreDecomposedTaskPreset[] = [
           { text: "À la fin des 3 mois, évaluer son niveau A1 (compréhension, expression) et planifier les prochaines étapes." },
       ]},
     ]},
-    // ... (ajouter au moins 11 autres tâches prédécomposées avec une structure similaire)
     { id: 'pd_devperso_2', name: "Préparer un semi-marathon", mainTaskText: "Se préparer pour courir un semi-marathon en 4 mois", category: "Développement Personnel", subTasks: [
         { text: "Phase 1: Fondation (Mois 1)", subTasks: [
             { text: "Obtenir un avis médical et un certificat si nécessaire." },
@@ -390,7 +389,6 @@ const preDecomposedTaskPresets: PreDecomposedTaskPreset[] = [
           { text: "Installer les luminaires et les finitions (poignées, plinthes)." },
       ]},
     ]},
-    // Add more presets to reach at least 16
     { id: 'pd_gp_4', name: "Écrire un livre blanc professionnel", mainTaskText: "Écrire un livre blanc sur une expertise métier", category: "Gestion de Projet", subTasks: [
         { text: "Définition du sujet et de la cible", subTasks: [
             { text: "Identifier un sujet à forte valeur ajoutée pour le public cible." },
@@ -573,6 +571,7 @@ export function TaskBreakerTool() {
   const [intensity, setIntensity] = useState<number>(3);
   const [mainTaskInput, setMainTaskInput] = useState<string>('');
   const [currentMainTaskContext, setCurrentMainTaskContext] = useState<string>('');
+  const mainTaskTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [allUiTasksFlat, setAllUiTasksFlat] = useState<UITaskBreakerTask[]>([]);
   const [taskTree, setTaskTree] = useState<UITaskBreakerTask[]>([]);
@@ -609,7 +608,14 @@ export function TaskBreakerTool() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedExpanded = localStorage.getItem(TASK_BREAKER_EXPANDED_STATE_KEY);
-      if (savedExpanded) setExpandedStates(JSON.parse(savedExpanded));
+      if (savedExpanded) {
+        try {
+          setExpandedStates(JSON.parse(savedExpanded));
+        } catch (e) {
+          console.error("Failed to parse expanded states from localStorage", e);
+          setExpandedStates({});
+        }
+      }
     }
   }, []);
 
@@ -619,8 +625,13 @@ export function TaskBreakerTool() {
     }
   }, [expandedStates]);
 
+  const currentMainTaskContextRef = useRef(currentMainTaskContext);
+  useEffect(() => {
+    currentMainTaskContextRef.current = currentMainTaskContext;
+  }, [currentMainTaskContext]);
 
-  const fetchTaskData = useCallback(async () => {
+
+  const fetchTaskData = useCallback(async (options: { preserveCurrentContext?: boolean } = {}) => {
     if (!user) {
       setAllUiTasksFlat([]);
       setTaskTree([]);
@@ -644,14 +655,18 @@ export function TaskBreakerTool() {
       setCustomCommonPresets(dbCustomPresets);
       setHistory(dbHistory);
 
-      const latestContext = uiTasks.length > 0
-        ? (uiTasks.filter(t => !t.parent_id).sort((a,b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]?.main_task_text_context || '')
-        : '';
-
-      setCurrentMainTaskContext(latestContext);
-      const tasksForCurrentContext = latestContext ? uiTasks.filter(t => t.main_task_text_context === latestContext) : [];
-      setTaskTree(buildTree(tasksForCurrentContext, null));
-      setMainTaskInput(latestContext);
+      if (!options.preserveCurrentContext) {
+        const latestContext = uiTasks.length > 0
+          ? (uiTasks.filter(t => !t.parent_id && t.main_task_text_context) 
+              .sort((a,b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0]?.main_task_text_context || '')
+          : '';
+        
+        setCurrentMainTaskContext(latestContext);
+        setMainTaskInput(latestContext);
+      } else {
+         // If preserving context, ensure mainTaskInput reflects the current (possibly now empty) context
+         setMainTaskInput(currentMainTaskContextRef.current);
+      }
 
     } catch (error) {
       console.error("Error fetching TaskBreaker data:", error);
@@ -663,18 +678,20 @@ export function TaskBreakerTool() {
     } finally {
       setIsLoadingData(false);
     }
-  }, [user, toast, expandedStates]);
+  }, [user, toast, expandedStates, isOnline]); // isOnline ensures re-fetch on status change
 
   useEffect(() => {
     fetchTaskData();
-  }, [fetchTaskData, isOnline]);
+  }, [isOnline, user]); // Removed fetchTaskData from here to avoid loop
 
   useEffect(() => {
+    // Rebuild taskTree when allUiTasksFlat or currentMainTaskContext changes
+    // Or when expandedStates change to correctly reflect tree structure
     const tasksForCurrentContext = currentMainTaskContext
         ? allUiTasksFlat.filter(t => t.main_task_text_context === currentMainTaskContext)
-        : allUiTasksFlat.filter(t => !t.parent_id);
+        : []; // If no context, show an empty tree initially for new task creation.
     setTaskTree(buildTree(tasksForCurrentContext, null));
-  }, [allUiTasksFlat, currentMainTaskContext, expandedStates]);
+  }, [allUiTasksFlat, currentMainTaskContext, expandedStates]); 
 
 
   useEffect(() => {
@@ -720,11 +737,11 @@ export function TaskBreakerTool() {
       try {
         await updateTaskBreakerTask(taskId, { text: newText });
         setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? {...t, text: newText, updated_at: new Date().toISOString()} : t));
-        toast({ title: "Tâche sauvegardée", description: "Modification enregistrée."});
+        // toast({ title: "Tâche sauvegardée", description: "Modification enregistrée."}); // Can be too noisy
       } catch (error) {
         console.error("Error saving task text:", error);
         toast({ title: "Erreur de sauvegarde", description: (error as Error).message, variant: "destructive"});
-        await fetchTaskData();
+        await fetchTaskData({ preserveCurrentContext: true });
       } finally {
         setIsSubmitting(false);
       }
@@ -751,8 +768,13 @@ export function TaskBreakerTool() {
     setLoadingAITaskId(parentId);
 
     const mainContextForNewTasks = parentId
-      ? (findTaskInUiList(allUiTasksFlat, parentId)?.main_task_text_context || currentMainTaskContext)
+      ? (findTaskInUiList(allUiTasksFlat, parentId)?.main_task_text_context || currentMainTaskContextRef.current)
       : mainTaskInput;
+    
+    if (!mainContextForNewTasks && !parentId) { // If breaking down a brand new main task
+        setCurrentMainTaskContext(mainTaskInput); // Set the context now
+    }
+
 
     try {
       const result = await breakdownTask({ mainTaskText: taskTextToBreak, intensityLevel: intensity });
@@ -761,16 +783,18 @@ export function TaskBreakerTool() {
       const currentDepth = parentTask ? parentTask.depth + 1 : 0;
 
       let orderOffset = 0;
+      const contextToUse = parentId ? (parentTask?.main_task_text_context || currentMainTaskContextRef.current) : (currentMainTaskContextRef.current || mainTaskInput);
+
       if (parentId) {
-        orderOffset = allUiTasksFlat.filter(t => t.parent_id === parentId).length;
+        orderOffset = allUiTasksFlat.filter(t => t.parent_id === parentId && t.main_task_text_context === contextToUse).length;
       } else {
-        orderOffset = allUiTasksFlat.filter(t => !t.parent_id && t.main_task_text_context === mainContextForNewTasks).length;
+        orderOffset = allUiTasksFlat.filter(t => !t.parent_id && t.main_task_text_context === contextToUse).length;
       }
 
       const newTasksFromAI: CreateTaskBreakerTaskDTO[] = result.suggestedSubTasks.map((text, index) => ({
         text,
         parent_id: parentId,
-        main_task_text_context: mainContextForNewTasks,
+        main_task_text_context: contextToUse,
         is_completed: false,
         depth: currentDepth,
         order: orderOffset + index,
@@ -779,11 +803,8 @@ export function TaskBreakerTool() {
       for (const taskDto of newTasksFromAI) {
         await addTaskBreakerTask(taskDto);
       }
-
-      if(!parentId && mainContextForNewTasks !== currentMainTaskContext) {
-        setCurrentMainTaskContext(mainContextForNewTasks);
-      }
-      await fetchTaskData();
+      
+      await fetchTaskData({ preserveCurrentContext: true }); // Fetch all, but try to keep current view
       if (parentId) setExpandedStates(prev => ({...prev, [parentId]: true}));
 
 
@@ -809,28 +830,29 @@ export function TaskBreakerTool() {
       const parentTask = parentId ? findTaskInUiList(allUiTasksFlat, parentId) : null;
       const depth = parentTask ? parentTask.depth + 1 : 0;
 
+      const contextToUse = parentId ? (parentTask?.main_task_text_context || currentMainTaskContextRef.current) : (currentMainTaskContextRef.current || mainTaskInput);
+      if (!currentMainTaskContextRef.current && !parentId && mainTaskInput) { // If adding subtask to a new main task
+         setCurrentMainTaskContext(mainTaskInput); // Set context now
+      }
+      
       let order = 0;
       if (parentId) {
-         order = allUiTasksFlat.filter(t => t.parent_id === parentId).length;
+         order = allUiTasksFlat.filter(t => t.parent_id === parentId && t.main_task_text_context === contextToUse).length;
       } else {
-        order = allUiTasksFlat.filter(t => !t.parent_id && t.main_task_text_context === (currentMainTaskContext || mainTaskInput)).length;
+        order = allUiTasksFlat.filter(t => !t.parent_id && t.main_task_text_context === contextToUse).length;
       }
 
-      const mainContext = parentId ? (parentTask?.main_task_text_context || currentMainTaskContext) : (currentMainTaskContext || mainTaskInput);
-      if (!currentMainTaskContext && !parentId && mainTaskInput) {
-         setCurrentMainTaskContext(mainTaskInput);
-      }
 
       const taskDto: CreateTaskBreakerTaskDTO = {
         text,
         parent_id: parentId,
-        main_task_text_context: mainContext,
+        main_task_text_context: contextToUse,
         is_completed: false,
         depth,
         order,
       };
       await addTaskBreakerTask(taskDto);
-      await fetchTaskData();
+      await fetchTaskData({ preserveCurrentContext: true });
       if (parentId) setExpandedStates(prev => ({...prev, [parentId]: true}));
 
       if (parentId) setNewChildSubTaskText(prev => ({ ...prev, [parentId]: '' }));
@@ -857,7 +879,7 @@ export function TaskBreakerTool() {
     } catch (error) {
       console.error("Error toggling completion:", error);
       toast({ title: "Erreur", description: (error as Error).message, variant: "destructive" });
-      await fetchTaskData();
+      await fetchTaskData({ preserveCurrentContext: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -871,8 +893,8 @@ export function TaskBreakerTool() {
     if (!user) { toast({ title: "Non connecté", variant: "destructive" }); return; }
     setIsSubmitting(true);
     try {
-      await deleteTaskBreakerTask(taskId);
-      await fetchTaskData();
+      await deleteTaskBreakerTask(taskId); // This handles recursive DB deletion and AppDataService update
+      await fetchTaskData({ preserveCurrentContext: true });
       toast({ title: "Tâche supprimée", variant: "destructive" });
     } catch (error) {
       console.error("Error deleting task:", error);
@@ -904,25 +926,26 @@ export function TaskBreakerTool() {
   };
 
   const handleExport = (format: 'txt' | 'md' | 'email') => {
-    if (!currentMainTaskContext.trim() && taskTree.length === 0) {
+    if (!currentMainTaskContextRef.current.trim() && taskTree.length === 0) {
       toast({title: "Rien à exporter", description: "Veuillez d'abord décomposer une tâche.", variant: "destructive"});
       return;
     }
     let content = '';
     const treeToExport = taskTree.length > 0 ? taskTree : [];
+    const mainTaskNameToExport = currentMainTaskContextRef.current || "Tâche Principale Non Définie";
 
     if (format === 'md' || format === 'email') {
-      content = `# ${currentMainTaskContext || "Tâche Principale Non Définie"}\n\n`;
+      content = `# ${mainTaskNameToExport}\n\n`;
       if(treeToExport.length > 0) content += generateTaskTreeText(treeToExport, 'md');
       else content += "_Aucune sous-tâche définie._\n";
     } else {
-      content = `${currentMainTaskContext || "Tâche Principale Non Définie"}\n\n`;
+      content = `${mainTaskNameToExport}\n\n`;
       if(treeToExport.length > 0) content += generateTaskTreeText(treeToExport, 'txt');
       else content += "Aucune sous-tâche définie.\n";
     }
 
     if (format === 'email') {
-      const subject = encodeURIComponent(`Décomposition de tâche : ${currentMainTaskContext || 'Nouvelle Tâche'}`);
+      const subject = encodeURIComponent(`Décomposition de tâche : ${mainTaskNameToExport}`);
       const body = encodeURIComponent(content);
       window.location.href = `mailto:?subject=${subject}&body=${body}`;
       toast({ title: "Préparation de l'email", description: "Votre client email devrait s'ouvrir." });
@@ -933,7 +956,7 @@ export function TaskBreakerTool() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `decomposition-${currentMainTaskContext ? currentMainTaskContext.toLowerCase().replace(/\s+/g, '-') : 'tache'}.${fileExtension}`;
+      link.download = `decomposition-${mainTaskNameToExport ? mainTaskNameToExport.toLowerCase().replace(/\s+/g, '-') : 'tache'}.${fileExtension}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -944,11 +967,11 @@ export function TaskBreakerTool() {
 
   const handleOpenSaveToHistoryDialog = () => {
     if (!user) { toast({ title: "Non connecté", variant: "destructive"}); return; }
-    if (!currentMainTaskContext.trim() && taskTree.length === 0) {
+    if (!currentMainTaskContextRef.current.trim() && taskTree.length === 0) {
       toast({ title: "Rien à sauvegarder", description: "Décomposez une tâche avant de la sauvegarder.", variant: "destructive"});
       return;
     }
-    setCurrentBreakdownName(currentMainTaskContext.substring(0, 50) || "Nouvelle Décomposition");
+    setCurrentBreakdownName(currentMainTaskContextRef.current.substring(0, 50) || "Nouvelle Décomposition");
     setSaveToHistoryDialog(true);
   };
 
@@ -962,12 +985,12 @@ export function TaskBreakerTool() {
     try {
         const dto: CreateTaskBreakerSavedBreakdownDTO = {
             name: currentBreakdownName,
-            main_task_text: currentMainTaskContext,
-            sub_tasks_json: JSON.stringify(taskTree), // Save current UI tree structure
+            main_task_text: currentMainTaskContextRef.current,
+            sub_tasks_json: JSON.stringify(taskTree), 
             intensity_on_save: intensity,
         };
         await addTaskBreakerSavedBreakdown(dto);
-        await fetchTaskData(); // Re-fetch history
+        await fetchTaskData({ preserveCurrentContext: true }); 
         setSaveToHistoryDialog(false);
         setCurrentBreakdownName('');
         toast({ title: "Sauvegardé dans l'historique!", description: `"${dto.name}" a été ajouté.`});
@@ -984,15 +1007,12 @@ export function TaskBreakerTool() {
 
     setIsSubmitting(true);
     const newMainTaskContext = `${entry.main_task_text} (Historique ${new Date().toLocaleTimeString()})`;
-    setMainTaskInput(newMainTaskContext); // Update input field
-    setCurrentMainTaskContext(newMainTaskContext); // Set as current working context
-
+    
     try {
         const parsedSubTasks: UITaskBreakerTask[] = JSON.parse(entry.sub_tasks_json || "[]");
-        const newExpandedStates: Record<string, boolean> = {};
+        const newExpandedStatesFromHistory: Record<string, boolean> = {};
 
-        const addTasksRecursively = async (tasks: UITaskBreakerTask[], parentDbId: string | null, currentDepth: number): Promise<string[]> => {
-            const addedTaskIds: string[] = [];
+        const addTasksRecursively = async (tasks: UITaskBreakerTask[], parentDbId: string | null, currentDepth: number): Promise<void> => {
             for (let i = 0; i < tasks.length; i++) {
                 const task = tasks[i];
                 const taskDto: CreateTaskBreakerTaskDTO = {
@@ -1004,27 +1024,29 @@ export function TaskBreakerTool() {
                     order: i,
                 };
                 const addedTask = await addTaskBreakerTask(taskDto);
-                addedTaskIds.push(addedTask.id);
-                if (task.isExpanded) {
-                    newExpandedStates[addedTask.id] = true;
+                if (task.isExpanded) { // isExpanded comes from the saved UITaskBreakerTask
+                    newExpandedStatesFromHistory[addedTask.id] = true;
                 }
                 if (task.subTasks && task.subTasks.length > 0) {
-                    const childIds = await addTasksRecursively(task.subTasks, addedTask.id, currentDepth + 1);
-                    addedTaskIds.push(...childIds);
+                    await addTasksRecursively(task.subTasks, addedTask.id, currentDepth + 1);
                 }
             }
-            return addedTaskIds;
         };
-
+        
         await addTasksRecursively(parsedSubTasks, null, 0);
-        setExpandedStates(prev => ({ ...prev, ...newExpandedStates }));
+        
+        setMainTaskInput(newMainTaskContext); 
+        setCurrentMainTaskContext(newMainTaskContext); 
+        setExpandedStates(prev => ({ ...prev, ...newExpandedStatesFromHistory }));
         if (entry.intensity_on_save) setIntensity(entry.intensity_on_save);
+        
         setShowHistoryDialog(false);
         toast({ title: "Chargé depuis l'historique!", description: `"${entry.name}" est prêt.` });
-        await fetchTaskData(); // Crucial: refetch all data to rebuild UI from DB source
+        await fetchTaskData({ preserveCurrentContext: true }); // Re-fetch to update allUiTasksFlat from DB, then taskTree will rebuild
     } catch (error) {
         console.error("Error loading from history:", error);
         toast({ title: "Erreur de chargement depuis l'historique", description: (error as Error).message, variant: "destructive" });
+        await fetchTaskData(); // Fetch latest to recover from error
     } finally {
         setIsSubmitting(false);
     }
@@ -1035,7 +1057,7 @@ export function TaskBreakerTool() {
     setIsSubmitting(true);
     try {
         await deleteTaskBreakerSavedBreakdown(id);
-        await fetchTaskData(); // Re-fetch history
+        await fetchTaskData({ preserveCurrentContext: true }); // Re-fetch history
         toast({title: "Supprimé de l'historique", variant: "destructive"});
     } catch (error) {
         console.error("Error deleting from history:", error);
@@ -1047,22 +1069,22 @@ export function TaskBreakerTool() {
 
   const handleLoadTaskSuggestion = (preset: TaskSuggestionPreset) => {
     setMainTaskInput(preset.taskText);
-    setCurrentMainTaskContext(''); // Clear current context, user will generate new one
-    setAllUiTasksFlat([]);
-    setTaskTree([]);
+    setCurrentMainTaskContext(''); 
+    setAllUiTasksFlat([]); // Clear existing flat tasks related to old context
+    setTaskTree([]); // Clear tree immediately
+    setExpandedStates({}); // Reset expansion
     setShowTaskSuggestionDialog(false);
     toast({ title: "Suggestion chargée!", description: `"${preset.name}" prêt à être décomposé.` });
+    mainTaskTextareaRef.current?.focus();
   };
 
   const handleLoadDecomposedPreset = async (preset: PreDecomposedTaskPreset) => {
     if (!user) { toast({ title: "Non connecté", variant: "destructive" }); return; }
     setIsSubmitting(true);
     const newMainTaskContext = `${preset.mainTaskText} (Modèle ${new Date().toLocaleTimeString()})`;
-    setMainTaskInput(newMainTaskContext);
-    setCurrentMainTaskContext(newMainTaskContext);
-
+    
     try {
-        const newExpandedStates: Record<string, boolean> = {};
+        const newExpandedStatesFromPreset: Record<string, boolean> = {};
         const addTasksRecursively = async (tasks: PreDecomposedTaskSubTask[], parentDbId: string | null, currentDepth: number): Promise<void> => {
             for (let i = 0; i < tasks.length; i++) {
                 const task = tasks[i];
@@ -1075,8 +1097,9 @@ export function TaskBreakerTool() {
                     order: i,
                 };
                 const addedTask = await addTaskBreakerTask(taskDto);
-                newExpandedStates[addedTask.id] = true; // Expand first level by default
-
+                if (currentDepth === 0) { // Expand first level by default for pre-decomposed tasks
+                    newExpandedStatesFromPreset[addedTask.id] = true;
+                }
                 if (task.subTasks && task.subTasks.length > 0) {
                     await addTasksRecursively(task.subTasks, addedTask.id, currentDepth + 1);
                 }
@@ -1084,40 +1107,56 @@ export function TaskBreakerTool() {
         };
 
         await addTasksRecursively(preset.subTasks, null, 0);
-        setExpandedStates(prev => ({ ...prev, ...newExpandedStates }));
+
+        setMainTaskInput(newMainTaskContext);
+        setCurrentMainTaskContext(newMainTaskContext);
+        setExpandedStates(prev => ({ ...prev, ...newExpandedStatesFromPreset }));
+        
         setShowDecomposedPresetDialog(false);
         toast({ title: "Tâche décomposée chargée!", description: `Modèle "${preset.name}" appliqué.` });
-        await fetchTaskData();
+        await fetchTaskData({ preserveCurrentContext: true }); // Fetch all data, UI will update via context change
+        mainTaskTextareaRef.current?.focus();
     } catch (error) {
         console.error("Error loading decomposed preset:", error);
         toast({ title: "Erreur chargement modèle décomposé", description: (error as Error).message, variant: "destructive" });
+        await fetchTaskData();
     } finally {
         setIsSubmitting(false);
     }
 };
 
 
-  const handleClearCurrentTask = async () => {
+ const handleClearCurrentTask = async () => {
     if (!user) { toast({ title: "Non connecté", variant: "destructive"}); return; }
-    if (!currentMainTaskContext && mainTaskInput === '' && taskTree.length === 0) {
+    if (!currentMainTaskContextRef.current && mainTaskInput === '' && taskTree.length === 0) {
       toast({ title: "Rien à effacer", description: "Aucune tâche principale ou décomposition active.", variant: "default"});
       setShowClearTaskDialog(false);
       return;
     }
     setIsSubmitting(true);
     try {
-      const tasksInContext = allUiTasksFlat.filter(t => t.main_task_text_context === currentMainTaskContext || (!t.parent_id && t.main_task_text_context === mainTaskInput));
-      for (const task of tasksInContext) {
-        await deleteTaskBreakerTask(task.id);
+      const contextToDelete = currentMainTaskContextRef.current || mainTaskInput;
+      
+      if (contextToDelete) {
+          const tasksInContext = allUiTasksFlat.filter(t => t.main_task_text_context === contextToDelete);
+          for (const task of tasksInContext) {
+            await deleteTaskBreakerTask(task.id); 
+          }
       }
+      
+      await fetchTaskData({ preserveCurrentContext: false }); // Fetch fresh data, this might load another context if available
 
+      // Explicitly set UI to cleared state AFTER fetching
       setMainTaskInput('');
-      setCurrentMainTaskContext('');
+      setCurrentMainTaskContext(''); 
       setNewDirectSubTaskText('');
       setNewChildSubTaskText({});
+      setExpandedStates({}); // Clear all expansion states
+
       setShowClearTaskDialog(false);
       toast({ title: "Tâche actuelle effacée", variant: "destructive"});
-      await fetchTaskData(); // Refresh data
+      mainTaskTextareaRef.current?.focus(); // Focus after state is fully cleared
+
     } catch (error) {
       console.error("Error clearing current task:", error);
       toast({ title: "Erreur d'effacement", description:(error as Error).message, variant: "destructive"});
@@ -1148,12 +1187,11 @@ export function TaskBreakerTool() {
             name: newCustomPresetNameInput,
             task_text: mainTaskInput,
         };
-        const newPreset = await addTaskBreakerCustomPreset(dto);
-        setCustomCommonPresets(prev => [...prev, newPreset]); // Optimistic update for UI
+        await addTaskBreakerCustomPreset(dto);
+        await fetchTaskData({ preserveCurrentContext: true }); 
         setShowSaveCustomPresetDialog(false);
         setNewCustomPresetNameInput('');
-        toast({title: "Modèle de tâche mémorisé!", description: `"${newPreset.name}" ajouté.`});
-        await fetchTaskData(); // Re-fetch to ensure sync
+        toast({title: "Modèle de tâche mémorisé!", description: `"${dto.name}" ajouté.`});
     } catch (error) {
         console.error("Error saving custom preset:", error);
         toast({title: "Erreur de mémorisation", description: (error as Error).message, variant: "destructive"});
@@ -1167,25 +1205,14 @@ export function TaskBreakerTool() {
     setIsSubmitting(true);
     try {
         await deleteTaskBreakerCustomPreset(idToDelete);
-        setCustomCommonPresets(prev => prev.filter(p => p.id !== idToDelete)); // Optimistic update
+        await fetchTaskData({ preserveCurrentContext: true }); 
         toast({title: "Modèle personnalisé supprimé", variant: "destructive"});
-        await fetchTaskData(); // Re-fetch
     } catch (error) {
         console.error("Error deleting custom preset:", error);
         toast({title: "Erreur de suppression", description: (error as Error).message, variant: "destructive"});
     } finally {
         setIsSubmitting(false);
     }
-  };
-
-  const combinedTaskSuggestionPresets = (): TaskSuggestionPreset[] => {
-    const customMapped: TaskSuggestionPreset[] = customCommonPresets.map(cp => ({
-      id: cp.id,
-      name: cp.name,
-      taskText: cp.task_text,
-      category: "Mes Tâches Mémorisées",
-    }));
-    return [...customMapped, ...systemTaskSuggestions];
   };
 
   const groupedSystemSuggestions = systemTaskSuggestions.reduce((acc, preset) => {
@@ -1207,7 +1234,7 @@ export function TaskBreakerTool() {
     return (
       <div style={{ marginLeft: `${task.depth * 15}px` }} className="mb-1.5">
         <div className={`flex items-center gap-1 p-1.5 border rounded-md bg-background hover:bg-muted/50 transition-colors ${task.is_completed ? 'opacity-60' : ''}`}>
-          { (allUiTasksFlat.some(t => t.parent_id === task.id) || task.isExpanded ) ? (
+          { (allUiTasksFlat.some(t => t.parent_id === task.id && t.main_task_text_context === task.main_task_text_context) || task.isExpanded ) ? (
              <Button variant="ghost" size="icon" onClick={() => toggleSubTaskExpansion(task.id)} className="h-6 w-6 p-0 shrink-0">
               {task.isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </Button>
@@ -1283,6 +1310,7 @@ export function TaskBreakerTool() {
               <label htmlFor="main-task" className="block text-sm font-medium text-foreground mb-1">Tâche principale à décomposer :</label>
               <div className="flex gap-2 items-center">
                 <Textarea
+                  ref={mainTaskTextareaRef}
                   id="main-task"
                   value={mainTaskInput}
                   onChange={(e) => setMainTaskInput(e.target.value)}
@@ -1308,15 +1336,18 @@ export function TaskBreakerTool() {
               </Button>
             </div>
 
-            { (currentMainTaskContext || taskTree.length > 0 || isLoadingData) && (
+            { (currentMainTaskContextRef.current || taskTree.length > 0 || isLoadingData) && (
               <div>
                 <h3 className="text-lg font-semibold mb-2 text-foreground mt-4">
-                  {currentMainTaskContext ? `Décomposition pour : "${currentMainTaskContext}"` : (taskTree.length > 0 ? "Liste des sous-tâches" : "")}
+                  {currentMainTaskContextRef.current ? `Décomposition pour : "${currentMainTaskContextRef.current}"` : ""}
                 </h3>
                 {isLoadingData && <div className="flex items-center justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary" /> <span className="ml-2">Chargement des tâches...</span></div>}
 
-                {!isLoadingData && taskTree.length === 0 && !isLoadingAI && (
+                {!isLoadingData && taskTree.length === 0 && !isLoadingAI && currentMainTaskContextRef.current && (
                     <p className="text-muted-foreground italic">Aucune sous-tâche. Cliquez sur "Décomposer" ou ajoutez-en manuellement ci-dessous.</p>
+                )}
+                 {!isLoadingData && taskTree.length === 0 && !isLoadingAI && !currentMainTaskContextRef.current && (
+                    <p className="text-muted-foreground italic text-center py-4">Entrez une tâche principale ci-dessus ou chargez un modèle pour commencer.</p>
                 )}
                 {(!isLoadingData && (isLoadingAI && loadingAITaskId === null && taskTree.length === 0)) && (
                     <div className="flex items-center justify-center text-muted-foreground">
@@ -1332,7 +1363,7 @@ export function TaskBreakerTool() {
                   </ScrollArea>
                 )}
 
-                {!isLoadingData && (currentMainTaskContext || taskTree.length > 0) && (
+                {!isLoadingData && currentMainTaskContextRef.current && (
                   <div className="mt-4 flex gap-2">
                     <Input
                       value={newDirectSubTaskText}
@@ -1436,13 +1467,13 @@ export function TaskBreakerTool() {
                 <BookmarkPlus className="mr-2 h-4 w-4" /> Mémoriser Tâche
             </Button>
 
-            <Button variant="outline" onClick={handleOpenSaveToHistoryDialog} disabled={!user || (!currentMainTaskContext.trim() && taskTree.length === 0) || isLoadingData || isSubmitting || isLoadingAI}>
+            <Button variant="outline" onClick={handleOpenSaveToHistoryDialog} disabled={!user || (!currentMainTaskContextRef.current.trim() && taskTree.length === 0) || isLoadingData || isSubmitting || isLoadingAI}>
                 <Save className="mr-2 h-4 w-4" /> Sauvegarder Décomposition
             </Button>
 
             <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
                 <DialogTrigger asChild>
-                    <Button variant="outline" disabled={isLoadingData || isSubmitting || isLoadingAI}><History className="mr-2 h-4 w-4" /> Historique ({history.length})</Button>
+                    <Button variant="outline" disabled={isLoadingData || isSubmitting || isLoadingAI || !user}><History className="mr-2 h-4 w-4" /> Historique ({history.length})</Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader><DialogTitle>Historique des Décompositions</DialogTitle></DialogHeader>
@@ -1471,7 +1502,7 @@ export function TaskBreakerTool() {
 
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="outline" disabled={!user || (!currentMainTaskContext.trim() && taskTree.length === 0) || isLoadingData || isSubmitting || isLoadingAI}><Download className="mr-2 h-4 w-4" /> Exporter</Button>
+                    <Button variant="outline" disabled={!user || (!currentMainTaskContextRef.current.trim() && taskTree.length === 0) || isLoadingData || isSubmitting || isLoadingAI}><Download className="mr-2 h-4 w-4" /> Exporter</Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
                     <DropdownMenuLabel>Options d'Export</DropdownMenuLabel>
@@ -1484,7 +1515,7 @@ export function TaskBreakerTool() {
 
             <AlertDialog open={showClearTaskDialog} onOpenChange={setShowClearTaskDialog}>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive" disabled={!user || (!currentMainTaskContext.trim() && taskTree.length === 0 && mainTaskInput === '') || isLoadingData || isSubmitting || isLoadingAI}>
+                    <Button variant="destructive" disabled={!user || (!currentMainTaskContextRef.current.trim() && taskTree.length === 0 && mainTaskInput === '') || isLoadingData || isSubmitting || isLoadingAI}>
                         <Eraser className="mr-2 h-4 w-4" /> Effacer Tâche Actuelle
                     </Button>
                 </AlertDialogTrigger>
@@ -1566,3 +1597,4 @@ export function TaskBreakerTool() {
     </Card>
   );
 }
+
