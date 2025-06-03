@@ -1,8 +1,9 @@
+
 // src/services/indexeddb/db.ts
 "use client"; // Dexie runs in the browser
 
 import Dexie, { type Table } from 'dexie';
-import type { PriorityTask, Routine, RoutineStep, BrainDumpContent, TaskBreakerTask, TaskBreakerCustomPreset, TaskBreakerSavedBreakdown, PriorityGridCustomPreset } from '@/types';
+import type { PriorityTask, Routine, RoutineStep, BrainDumpContent, TaskBreakerTask, TaskBreakerCustomPreset, TaskBreakerSavedBreakdown, PriorityGridCustomPreset, TimeFocusPreset } from '@/types';
 
 export class EasyGenieDB extends Dexie {
   priorityTasks!: Table<PriorityTask, string>;
@@ -12,34 +13,12 @@ export class EasyGenieDB extends Dexie {
   taskBreakerTasks!: Table<TaskBreakerTask, string>;
   taskBreakerCustomPresets!: Table<TaskBreakerCustomPreset, string>;
   taskBreakerSavedBreakdowns!: Table<TaskBreakerSavedBreakdown, string>;
-  priorityGridCustomPresets!: Table<PriorityGridCustomPreset, string>; // Added new table
+  priorityGridCustomPresets!: Table<PriorityGridCustomPreset, string>;
+  timeFocusPresets!: Table<TimeFocusPreset, string>; // Added new table
 
   constructor() {
     super('EasyGenieDB_v1'); // Database name
 
-    // Version 3: Original schema + taskBreakerCustomPresets + sync_status indices
-    // This version definition is kept for historical context if needed, but actual schema definitions occur in latest version.
-    this.version(3).stores({
-      priorityTasks: 'id, user_id, quadrant, created_at, updated_at, sync_status',
-      routines: 'id, user_id, name, created_at, updated_at, sync_status',
-      routineSteps: 'id, user_id, routine_id, order, created_at, updated_at, sync_status',
-      brainDumps: 'id, user_id, created_at, updated_at, sync_status',
-      taskBreakerTasks: 'id, user_id, parent_id, order, created_at, updated_at, sync_status',
-      taskBreakerCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
-    });
-
-    // Version 4: Add taskBreakerSavedBreakdowns table
-    this.version(4).stores({
-      priorityTasks: 'id, user_id, quadrant, created_at, updated_at, sync_status',
-      routines: 'id, user_id, name, created_at, updated_at, sync_status',
-      routineSteps: 'id, user_id, routine_id, order, created_at, updated_at, sync_status',
-      brainDumps: 'id, user_id, created_at, updated_at, sync_status',
-      taskBreakerTasks: 'id, user_id, parent_id, order, created_at, updated_at, sync_status',
-      taskBreakerCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
-      taskBreakerSavedBreakdowns: 'id, user_id, name, created_at, updated_at, sync_status',
-    });
-
-    // Version 5: Add priorityGridCustomPresets table
     this.version(5).stores({
       priorityTasks: 'id, user_id, quadrant, created_at, updated_at, sync_status',
       routines: 'id, user_id, name, created_at, updated_at, sync_status',
@@ -48,9 +27,22 @@ export class EasyGenieDB extends Dexie {
       taskBreakerTasks: 'id, user_id, parent_id, order, created_at, updated_at, sync_status',
       taskBreakerCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
       taskBreakerSavedBreakdowns: 'id, user_id, name, created_at, updated_at, sync_status',
-      priorityGridCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status', // Added new table schema
+      priorityGridCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
+    });
+
+    // Version 6: Add timeFocusPresets table
+    this.version(6).stores({
+      priorityTasks: 'id, user_id, quadrant, created_at, updated_at, sync_status',
+      routines: 'id, user_id, name, created_at, updated_at, sync_status',
+      routineSteps: 'id, user_id, routine_id, order, created_at, updated_at, sync_status',
+      brainDumps: 'id, user_id, created_at, updated_at, sync_status',
+      taskBreakerTasks: 'id, user_id, parent_id, order, created_at, updated_at, sync_status',
+      taskBreakerCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
+      taskBreakerSavedBreakdowns: 'id, user_id, name, created_at, updated_at, sync_status',
+      priorityGridCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
+      timeFocusPresets: 'id, user_id, name, created_at, updated_at, sync_status', // Added new table schema
     }).upgrade(tx => {
-      console.log("Upgrading EasyGenieDB to version 5. Added priorityGridCustomPresets table.");
+      console.log("Upgrading EasyGenieDB to version 6. Added timeFocusPresets table.");
     });
   }
 }

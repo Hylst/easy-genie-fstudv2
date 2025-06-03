@@ -37,6 +37,11 @@ import { PriorityGridCustomPresetSupabaseService } from './supabase/priority-gri
 import type { IPriorityGridCustomPresetService } from './interfaces/IPriorityGridCustomPresetService';
 import type { PriorityGridCustomPreset, CreatePriorityGridCustomPresetDTO } from '@/types';
 
+import { TimeFocusPresetIndexedDBService } from './indexeddb/time-focus-preset.indexeddb.service';
+import { TimeFocusPresetSupabaseService } from './supabase/time-focus-preset.supabase.service';
+import type { ITimeFocusPresetService } from './interfaces/ITimeFocusPresetService';
+import type { TimeFocusPreset, CreateTimeFocusPresetDTO } from '@/types';
+
 
 import { toast } from '@/hooks/use-toast';
 
@@ -88,6 +93,8 @@ const taskBreakerSavedBreakdownIndexedDBService = new TaskBreakerSavedBreakdownI
 const taskBreakerSavedBreakdownSupabaseService = new TaskBreakerSavedBreakdownSupabaseService();
 const priorityGridCustomPresetIndexedDBService = new PriorityGridCustomPresetIndexedDBService();
 const priorityGridCustomPresetSupabaseService = new PriorityGridCustomPresetSupabaseService();
+const timeFocusPresetIndexedDBService = new TimeFocusPresetIndexedDBService();
+const timeFocusPresetSupabaseService = new TimeFocusPresetSupabaseService();
 
 
 // --- Helper to get current user ID or throw error ---
@@ -413,6 +420,28 @@ export async function deletePriorityGridCustomPreset(id: string): Promise<void> 
   );
 }
 
+// --- TimeFocus Preset Operations ---
+export async function getAllTimeFocusPresets(userId?: string): Promise<TimeFocusPreset[]> {
+  const effectiveUserId = userId || getRequiredUserId();
+  return timeFocusPresetIndexedDBService.getAll(effectiveUserId);
+}
+export async function addTimeFocusPreset(data: CreateTimeFocusPresetDTO): Promise<TimeFocusPreset> {
+  const userId = getRequiredUserId();
+  return handleOnlineOperation<TimeFocusPreset, CreateTimeFocusPresetDTO>(
+    timeFocusPresetIndexedDBService,
+    timeFocusPresetSupabaseService,
+    'add', null, data, userId
+  ) as Promise<TimeFocusPreset>;
+}
+export async function deleteTimeFocusPreset(id: string): Promise<void> {
+  const userId = getRequiredUserId();
+  await handleOnlineOperation<TimeFocusPreset, CreateTimeFocusPresetDTO>(
+    timeFocusPresetIndexedDBService,
+    timeFocusPresetSupabaseService,
+    'delete', id, null, userId
+  );
+}
+
 
 // --- Synchronization Logic ---
 async function startSyncSession(userId: string): Promise<boolean> {
@@ -656,7 +685,6 @@ async function synchronizeTaskBreakerSavedBreakdowns(userId: string) {
         const serverBreakdown = await taskBreakerSavedBreakdownSupabaseService.add(breakdown, userId);
         await taskBreakerSavedBreakdownIndexedDBService.updateSyncStatus(breakdown.id, serverBreakdown.updated_at, serverBreakdown.id);
       } else if (breakdown.sync_status === 'updated') {
-        // Assuming updates are not common for history items, but if they are:
         const serverBreakdown = await taskBreakerSavedBreakdownSupabaseService.update(breakdown.id, breakdown, userId);
         await taskBreakerSavedBreakdownIndexedDBService.updateSyncStatus(breakdown.id, serverBreakdown.updated_at);
       } else if (breakdown.sync_status === 'deleted') {
@@ -715,6 +743,40 @@ async function synchronizePriorityGridCustomPresets(userId: string) {
   console.log("PriorityGridCustomPresets synchronization complete for user:", userId);
 }
 
+async function synchronizeTimeFocusPresets(userId: string) {
+  console.log("Synchronizing TimeFocusPresets for user:", userId);
+  const pendingPresets = await timeFocusPresetIndexedDBService.getPendingChanges(userId);
+
+  for (const preset of pendingPresets) {
+    try {
+      if (preset.sync_status === 'new') {
+        const serverPreset = await timeFocusPresetSupabaseService.add(preset, userId);
+        await timeFocusPresetIndexedDBService.updateSyncStatus(preset.id, serverPreset.updated_at, serverPreset.id);
+      } else if (preset.sync_status === 'updated') {
+        const serverPreset = await timeFocusPresetSupabaseService.update(preset.id, preset, userId);
+        await timeFocusPresetIndexedDBService.updateSyncStatus(preset.id, serverPreset.updated_at);
+      } else if (preset.sync_status === 'deleted') {
+        await timeFocusPresetSupabaseService.delete(preset.id, userId);
+        await timeFocusPresetIndexedDBService.hardDelete(preset.id);
+      }
+    } catch (error) {
+      console.error(`Failed to sync TimeFocus preset ${preset.id} (${preset.name}) with status ${preset.sync_status}:`, error);
+      toast({ title: `Erreur de synchronisation (Preset TimeFocus ${preset.name.substring(0,15)})`, description: (error as Error).message, variant: "destructive", duration: 7000 });
+    }
+  }
+  const serverPresets = await timeFocusPresetSupabaseService.getAll(userId);
+  await timeFocusPresetIndexedDBService.bulkUpdate(serverPresets);
+
+  const localSyncedPresets = await timeFocusPresetIndexedDBService.getAll(userId);
+  for (const localPreset of localSyncedPresets) {
+    if (localPreset.sync_status === 'synced' && !serverPresets.find(sp => sp.id === localPreset.id)) {
+      await timeFocusPresetIndexedDBService.hardDelete(localPreset.id);
+      console.log(`Removed orphaned synced local TimeFocus preset ${localPreset.id}`);
+    }
+  }
+  console.log("TimeFocusPresets synchronization complete for user:", userId);
+}
+
 
 export async function synchronizeAllData(userId: string): Promise<void> {
   if (!userId) {
@@ -731,7 +793,8 @@ export async function synchronizeAllData(userId: string): Promise<void> {
     await synchronizeTaskBreakerTasks(userId);
     await synchronizeTaskBreakerCustomPresets(userId);
     await synchronizeTaskBreakerSavedBreakdowns(userId);
-    await synchronizePriorityGridCustomPresets(userId); // Added new sync
+    await synchronizePriorityGridCustomPresets(userId);
+    await synchronizeTimeFocusPresets(userId); // Added new sync
     console.log("AppDataService: All data synchronization attempts finished for user", userId);
   } catch (error) {
     errorOccurred = true;

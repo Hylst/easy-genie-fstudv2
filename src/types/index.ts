@@ -102,6 +102,14 @@ export interface PriorityGridCustomPreset extends BaseEntity {
   specific_time?: string; // 'HH:mm'
 }
 
+export interface TimeFocusPreset extends BaseEntity {
+  name: string;
+  work_duration_minutes: number;
+  short_break_minutes: number;
+  long_break_minutes: number;
+  pomodoros_per_cycle: number;
+}
+
 
 // --- DTOs for Create operations ---
 export type CreatePriorityTaskDTO = Omit<PriorityTask, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'isCompleted' | 'sync_status' | 'last_synced_at'> & { isCompleted?: boolean };
@@ -122,6 +130,7 @@ export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 
 export type CreateTaskBreakerCustomPresetDTO = Omit<TaskBreakerCustomPreset, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 export type CreateTaskBreakerSavedBreakdownDTO = Omit<TaskBreakerSavedBreakdown, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 export type CreatePriorityGridCustomPresetDTO = Omit<PriorityGridCustomPreset, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
+export type CreateTimeFocusPresetDTO = Omit<TimeFocusPreset, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 
 
 // --- Specific types for TaskBreakerTool client-side UI and Presets ---
@@ -163,3 +172,19 @@ export interface PriorityGridPresetClient {
   specificTime?: string;
   isCustom?: boolean; // To distinguish between hardcoded and user-saved
 }
+
+// Type for TimeFocus client-side preset structure
+export interface TimeFocusSystemPreset {
+  id: string;
+  name: string;
+  work: number; // minutes
+  short: number; // minutes
+  long: number; // minutes
+  cycle: number; // pomodoros per long break
+}
+
+export interface TimeFocusDisplayPreset extends TimeFocusSystemPreset {
+    isCustom?: boolean; // For UI distinction
+}
+
+```
