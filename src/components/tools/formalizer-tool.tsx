@@ -8,10 +8,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
-import { Wand2, ClipboardCopy, Loader2, Mic } from 'lucide-react';
+import { Wand2, ClipboardCopy, Loader2, Mic, Download } from 'lucide-react'; // Ajout de Download
 import { useToast } from "@/hooks/use-toast";
 import type { FormalizerStyle } from '@/types';
 import { formalizeText } from '@/ai/flows/formalize-text-flow';
+import { useAuth } from '@/contexts/AuthContext'; // Pour l'email utilisateur
 
 const formalizerStyles: FormalizerStyle[] = [
   "Plus professionnel",
@@ -42,6 +43,7 @@ export function FormalizerTool() {
   const [selectedStyle, setSelectedStyle] = useState<FormalizerStyle>(formalizerStyles[0]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const { toast } = useToast();
+  const { user } = useAuth(); // Récupérer l'utilisateur pour l'email
 
   const [isListeningInputText, setIsListeningInputText] = useState<boolean>(false);
   const recognitionRefInputText = useRef<any>(null);
@@ -141,6 +143,25 @@ export function FormalizerTool() {
       description: "Le texte transformé a été copié dans le presse-papiers.",
     });
   };
+
+  const handleDownloadText = () => {
+    if (!outputText) return;
+    const userEmailPart = user?.email?.split('@')[0] || 'invite';
+    const date = new Date();
+    const formattedDate = `${date.getDate().toString().padStart(2, '0')}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getFullYear()}`;
+    const filename = `formaliseur-${formattedDate}-${userEmailPart}.txt`;
+    
+    const blob = new Blob([outputText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast({ title: "Téléchargement lancé", description: `Fichier ${filename} sauvegardé.` });
+  };
   
   const currentIntensityDescription = intensityDescriptions[intensity] || "Le génie adapte son effort à votre demande.";
 
@@ -165,7 +186,7 @@ export function FormalizerTool() {
               onChange={(e) => setInputText(e.target.value)}
               placeholder="Écrivez ou collez votre texte ici..."
               rows={8}
-              className="w-full p-3 text-base leading-relaxed rounded-md shadow-inner bg-background focus:ring-primary pr-12" // Added pr-12 for mic button space
+              className="w-full p-3 text-base leading-relaxed rounded-md shadow-inner bg-background focus:ring-primary pr-12" 
               disabled={isLoading || (isListeningInputText)}
             />
             <Button
@@ -196,7 +217,7 @@ export function FormalizerTool() {
           </Select>
         </div>
 
-        <Button onClick={handleFormalize} disabled={isLoading || isListeningInputText} className="w-full text-lg py-3">
+        <Button onClick={handleFormalize} disabled={isLoading || isListeningInputText || !inputText.trim()} className="w-full text-lg py-3">
           {isLoading ? (
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
           ) : (
@@ -206,28 +227,39 @@ export function FormalizerTool() {
         </Button>
 
         <div>
-          <Label htmlFor="output-text" className="block text-sm font-medium text-foreground mb-1">Texte transformé par le Génie :</Label>
-          <div className="relative">
-            <Textarea
-              id="output-text"
-              value={outputText}
-              readOnly
-              placeholder="Votre texte transformé apparaîtra ici..."
-              rows={8}
-              className="w-full p-3 text-base leading-relaxed rounded-md shadow-inner bg-muted/50 focus:ring-primary"
-            />
+          <div className="flex justify-between items-center mb-1">
+            <Label htmlFor="output-text" className="block text-sm font-medium text-foreground">Texte transformé par le Génie :</Label>
             {outputText && (
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={handleCopyToClipboard} 
-                className="absolute top-2 right-2 text-muted-foreground hover:text-primary"
-                aria-label="Copier le texte transformé"
-              >
-                <ClipboardCopy className="h-5 w-5" />
-              </Button>
+                <div className="flex gap-1">
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={handleCopyToClipboard} 
+                        className="text-muted-foreground hover:text-primary h-7 w-7"
+                        aria-label="Copier le texte transformé"
+                    >
+                        <ClipboardCopy className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={handleDownloadText} 
+                        className="text-muted-foreground hover:text-primary h-7 w-7"
+                        aria-label="Télécharger le texte transformé"
+                    >
+                        <Download className="h-4 w-4" />
+                    </Button>
+                </div>
             )}
           </div>
+          <Textarea
+            id="output-text"
+            value={outputText}
+            readOnly
+            placeholder="Votre texte transformé apparaîtra ici..."
+            rows={8}
+            className="w-full p-3 text-base leading-relaxed rounded-md shadow-inner bg-muted/50 focus:ring-primary"
+          />
         </div>
       </CardContent>
       <CardFooter>
@@ -238,3 +270,4 @@ export function FormalizerTool() {
     </Card>
   );
 }
+
