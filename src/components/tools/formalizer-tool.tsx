@@ -1,14 +1,14 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react'; // Added useEffect, useRef, useCallback
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
-import { Wand2, ClipboardCopy, Loader2, Mic } from 'lucide-react'; // Added Mic
+import { Wand2, ClipboardCopy, Loader2, Mic } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import type { FormalizerStyle } from '@/types';
 import { formalizeText } from '@/ai/flows/formalize-text-flow';
@@ -158,19 +158,20 @@ export function FormalizerTool() {
         
         <div>
           <Label htmlFor="input-text" className="block text-sm font-medium text-foreground mb-1">Votre texte original :</Label>
-          <div className="relative">
+           <div className="relative">
             <Textarea
               id="input-text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               placeholder="Écrivez ou collez votre texte ici..."
               rows={8}
-              className="w-full p-3 text-base leading-relaxed rounded-md shadow-inner bg-background focus:ring-primary pr-12"
+              className="w-full p-3 text-base leading-relaxed rounded-md shadow-inner bg-background focus:ring-primary pr-12" // Added pr-12 for mic button space
               disabled={isLoading || (isListeningInputText)}
             />
             <Button
               variant="ghost"
               size="icon"
+              type="button"
               onClick={handleToggleListeningInputText}
               className={`absolute top-3 right-3 text-muted-foreground hover:text-primary ${isListeningInputText ? 'text-red-500 animate-pulse' : ''}`}
               aria-label={isListeningInputText ? "Arrêter l'écoute" : "Démarrer l'écoute vocale pour le texte original"}
