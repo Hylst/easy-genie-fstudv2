@@ -8,31 +8,97 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Play, StopCircle, Loader2, Wand2, FileText, Volume2, Settings2, Info, BookOpenText } from 'lucide-react'; // Added BookOpenText
+import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText, Sparkles, Brain } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { simplifyText } from '@/ai/flows/simplify-text-flow'; 
 import { useAuth } from '@/contexts/AuthContext';
+import type { ImmersiveReaderSettings } from '@/types';
+import { Switch } from '@/components/ui/switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// Default settings, more can be added later from ImmersiveReaderSettings type
-const DEFAULT_SPEECH_RATE = 1; // Normal speed
+const DEFAULT_SPEECH_RATE_GENIE = 1; // Normal speed for Genie mode slider
+const IMMERSIVE_READER_SETTINGS_KEY = "easyGenieImmersiveReaderSettings_v1";
+const IMMERSIVE_READER_MODE_KEY = "easyGenieImmersiveReaderMode_v1";
+
+const defaultDisplaySettings: ImmersiveReaderSettings = {
+  fontSize: 18,
+  fontFamily: 'System',
+  lineHeight: 1.6,
+  letterSpacing: 0.5,
+  wordSpacing: 1,
+  theme: 'light',
+  focusMode: 'none', // Not implemented yet
+  // speechRate is handled separately for Genie mode
+};
 
 export function ImmersiveReaderTool() {
   const [intensity, setIntensity] = useState<number>(3);
   const [inputText, setInputText] = useState<string>('');
-  const [processedText, setProcessedText] = useState<string>(''); // For simplified text
-  const [isProcessing, setIsProcessing] = useState<boolean>(false); // General processing, not used currently
+  const [processedText, setProcessedText] = useState<string>('');
   const [isLoadingAI, setIsLoadingAI] = useState<boolean>(false);
+  const [toolMode, setToolMode] = useState<'magique' | 'genie'>('magique'); // 'magique' or 'genie'
 
   const { toast } = useToast();
   const { user } = useAuth();
 
   // Web Speech API state
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
-  const [speechRate, setSpeechRate] = useState<number>(DEFAULT_SPEECH_RATE);
+  const [speechRate, setSpeechRate] = useState<number>(DEFAULT_SPEECH_RATE_GENIE); // For Genie mode slider
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const synthesis = typeof window !== 'undefined' ? window.speechSynthesis : null;
 
-  // Stop speech when component unmounts or text changes
+  // Genie Mode specific states
+  const [displaySettings, setDisplaySettings] = useState<ImmersiveReaderSettings>(defaultDisplaySettings);
+  const [showSettingsDialog, setShowSettingsDialog] = useState<boolean>(false);
+  const [words, setWords] = useState<string[]>([]);
+  const [currentWordCharIndex, setCurrentWordCharIndex] = useState<number>(-1);
+
+
+  // Load settings and mode from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedSettings = localStorage.getItem(IMMERSIVE_READER_SETTINGS_KEY);
+      if (savedSettings) {
+        try {
+          setDisplaySettings(JSON.parse(savedSettings));
+        } catch (e) {
+          console.error("Failed to parse saved display settings:", e);
+          localStorage.removeItem(IMMERSIVE_READER_SETTINGS_KEY); // Clear corrupted data
+        }
+      }
+      const savedMode = localStorage.getItem(IMMERSIVE_READER_MODE_KEY);
+      if (savedMode === 'genie' || savedMode === 'magique') {
+        setToolMode(savedMode);
+      }
+    }
+  }, []);
+
+  // Save settings to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(IMMERSIVE_READER_SETTINGS_KEY, JSON.stringify(displaySettings));
+    }
+  }, [displaySettings]);
+
+  // Save mode to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(IMMERSIVE_READER_MODE_KEY, toolMode);
+    }
+  }, [toolMode]);
+  
+
+  // Stop speech when component unmounts or text/mode changes significantly
   useEffect(() => {
     return () => {
       if (synthesis && synthesis.speaking) {
@@ -48,13 +114,17 @@ export function ImmersiveReaderTool() {
   }, [isSpeaking, synthesis]);
 
   useEffect(() => {
-    // Adjust speech rate based on intensity when intensity changes
-    // Lower intensity -> slower speech, higher intensity -> faster speech
-    // Mapping intensity 1-5 to speech rate 0.7 - 1.3 (example range)
-    const newRate = 0.7 + (intensity - 1) * ( (1.3 - 0.7) / 4 );
-    setSpeechRate(Math.max(0.5, Math.min(2, newRate))); // Clamp between 0.5 and 2
-  }, [intensity]);
-
+    // When text changes (input or processed), update words for Genie mode
+    if (toolMode === 'genie') {
+      const textToDisplay = processedText.trim() || inputText.trim();
+      setWords(textToDisplay.split(/(\s+)/).filter(Boolean)); // Split by space, keeping spaces
+    } else {
+      setWords([]); // Clear words if not in Genie mode
+    }
+    setCurrentWordCharIndex(-1); // Reset highlight
+    if (synthesis?.speaking) synthesis.cancel();
+    setIsSpeaking(false);
+  }, [inputText, processedText, toolMode, synthesis]);
 
   const handleProcessText = async () => {
     if (!inputText.trim()) {
@@ -83,7 +153,7 @@ export function ImmersiveReaderTool() {
       return;
     }
     if (synthesis.speaking) {
-      synthesis.cancel(); // Stop current speech before starting new
+      synthesis.cancel(); 
     }
 
     const textToSpeak = processedText.trim() || inputText.trim();
@@ -93,16 +163,38 @@ export function ImmersiveReaderTool() {
     }
 
     utteranceRef.current = new SpeechSynthesisUtterance(textToSpeak);
-    utteranceRef.current.lang = 'fr-FR'; // Assume French for now
-    utteranceRef.current.rate = speechRate;
+    utteranceRef.current.lang = 'fr-FR';
+    
+    if (toolMode === 'genie') {
+      utteranceRef.current.rate = speechRate; // Use slider value for Genie mode
+    } else { // Magique mode
+      // Derive rate from intensity: 1 -> 0.7, 3 -> 1.0, 5 -> 1.3
+      const baseRate = 0.7;
+      const rateIncrement = (1.3 - 0.7) / 4;
+      utteranceRef.current.rate = Math.max(0.5, Math.min(2, baseRate + (intensity - 1) * rateIncrement));
+    }
     
     utteranceRef.current.onstart = () => setIsSpeaking(true);
-    utteranceRef.current.onend = () => setIsSpeaking(false);
+    utteranceRef.current.onend = () => {
+        setIsSpeaking(false);
+        setCurrentWordCharIndex(-1); // Clear highlight on end
+    };
     utteranceRef.current.onerror = (event) => {
       console.error("Speech synthesis error:", event.error);
       setIsSpeaking(false);
+      setCurrentWordCharIndex(-1);
       toast({ title: "Erreur de lecture", description: `Impossible de lire le texte: ${event.error}`, variant: "destructive"});
     };
+
+    if (toolMode === 'genie') {
+        utteranceRef.current.onboundary = (event) => {
+            if (event.name === 'word') {
+                setCurrentWordCharIndex(event.charIndex);
+            }
+        };
+    } else {
+        utteranceRef.current.onboundary = null; // No word highlighting in Magique mode
+    }
     
     synthesis.speak(utteranceRef.current);
   };
@@ -112,26 +204,66 @@ export function ImmersiveReaderTool() {
       synthesis.cancel();
     }
     setIsSpeaking(false);
+    setCurrentWordCharIndex(-1); // Clear highlight on stop
   };
 
-
-  const intensityDescription = () => {
-    if (intensity <= 2) return "Simplification légère du texte, vitesse de lecture plus lente.";
-    if (intensity <= 4) return "Simplification modérée, vitesse de lecture normale.";
-    return "Simplification marquée pour une lecture facile, vitesse de lecture plus rapide.";
+  const getIntensityDescription = () => {
+    if (toolMode === 'genie') {
+      if (intensity <= 2) return "Simplification IA légère du texte.";
+      if (intensity <= 4) return "Simplification IA modérée.";
+      return "Simplification IA marquée pour une lecture facile.";
+    } else { // Magique Mode
+      if (intensity <= 2) return "Simplification IA légère, vitesse de lecture plus lente.";
+      if (intensity <= 4) return "Simplification IA modérée, vitesse de lecture normale.";
+      return "Simplification IA marquée, vitesse de lecture plus rapide.";
+    }
   };
+  
+  const handleSettingChange = (setting: keyof ImmersiveReaderSettings, value: any) => {
+    setDisplaySettings(prev => ({ ...prev, [setting]: value }));
+  };
+
+  const textDisplayStyles = toolMode === 'genie' ? {
+    fontSize: `${displaySettings.fontSize}px`,
+    fontFamily: displaySettings.fontFamily === 'System' ? 'inherit' : displaySettings.fontFamily,
+    lineHeight: displaySettings.lineHeight,
+    letterSpacing: `${displaySettings.letterSpacing}px`,
+    wordSpacing: `${displaySettings.wordSpacing}px`,
+    backgroundColor: displaySettings.theme === 'dark' ? 'hsl(var(--foreground) / 0.1)' : displaySettings.theme === 'sepia' ? '#FBF0D9' : 'hsl(var(--background))',
+    color: displaySettings.theme === 'dark' ? 'hsl(var(--background))' : displaySettings.theme === 'sepia' ? '#5B4636' : 'hsl(var(--foreground))',
+  } : {};
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
-        <CardTitle className="text-3xl font-bold text-primary flex items-center gap-2">
-          <BookOpenText className="h-8 w-8" /> Lecteur Immersif Magique
-        </CardTitle>
-        <CardDescription>Collez votre texte et laissez le Génie vous aider à le lire plus facilement grâce à la simplification et la synthèse vocale. L'intensité ajuste la simplification et la vitesse de lecture.</CardDescription>
+        <div className="flex justify-between items-start">
+            <div>
+                <CardTitle className="text-3xl font-bold text-primary flex items-center gap-2">
+                <BookOpenText className="h-8 w-8" /> Lecteur Immersif 
+                {toolMode === 'magique' ? <Sparkles className="h-6 w-6 text-accent" /> : <Brain className="h-6 w-6 text-accent" />}
+                </CardTitle>
+                <CardDescription>
+                    {toolMode === 'magique' 
+                    ? "Mode Magique : Simplification IA et lecture à voix haute à vitesse variable." 
+                    : "Mode Génie : Personnalisation avancée de l'affichage et surlignage synchronisé."}
+                </CardDescription>
+            </div>
+            <div className="flex items-center space-x-2 pt-1">
+                <Label htmlFor="tool-mode-switch" className="text-sm text-muted-foreground">
+                    {toolMode === 'magique' ? "Magique" : "Génie"}
+                </Label>
+                <Switch
+                    id="tool-mode-switch"
+                    checked={toolMode === 'genie'}
+                    onCheckedChange={(checked) => setToolMode(checked ? 'genie' : 'magique')}
+                    aria-label={`Passer en mode ${toolMode === 'magique' ? 'Génie' : 'Magique'}`}
+                />
+            </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         <IntensitySelector value={intensity} onChange={setIntensity} />
-        <p className="text-sm text-muted-foreground text-center -mt-4 h-5">{intensityDescription()}</p>
+        <p className="text-sm text-muted-foreground text-center -mt-4 h-5">{getIntensityDescription()}</p>
         
         <div>
           <Label htmlFor="input-text-immersive" className="block text-sm font-medium text-foreground mb-1">
@@ -142,9 +274,7 @@ export function ImmersiveReaderTool() {
             value={inputText}
             onChange={(e) => {
               setInputText(e.target.value);
-              setProcessedText(''); // Clear processed text if input changes
-              if (synthesis?.speaking) synthesis.cancel();
-              setIsSpeaking(false);
+              setProcessedText('');
             }}
             placeholder="Écrivez ou collez le texte que vous souhaitez lire..."
             rows={10}
@@ -153,33 +283,92 @@ export function ImmersiveReaderTool() {
           />
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 items-center">
           <Button onClick={handleProcessText} disabled={isLoadingAI || !inputText.trim() || isSpeaking} className="w-full sm:flex-1">
             {isLoadingAI ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Wand2 className="mr-2 h-5 w-5" />}
-            Préparer le Texte avec le Génie
+            Préparer le Texte
           </Button>
-           <Button onClick={handlePlaySpeech} disabled={isLoadingAI || (!processedText.trim() && !inputText.trim()) || isSpeaking} className="w-full sm:flex-1">
-            <Volume2 className="mr-2 h-5 w-5" /> Lire le Texte
+          <Button onClick={handlePlaySpeech} disabled={isLoadingAI || (!processedText.trim() && !inputText.trim()) || isSpeaking} className="w-full sm:flex-1">
+            <Play className="mr-2 h-5 w-5" /> Lire le Texte
           </Button>
           <Button onClick={handleStopSpeech} disabled={!isSpeaking} variant="outline" className="w-full sm:flex-1">
             <StopCircle className="mr-2 h-5 w-5" /> Arrêter la Lecture
           </Button>
         </div>
         
-        <div>
-            <Label htmlFor="speech-rate-slider" className="text-sm font-medium text-foreground">
-                Vitesse de lecture (actuellement: {speechRate.toFixed(1)}x)
-                <Info className="inline h-3 w-3 ml-1 text-muted-foreground cursor-help" title="La vitesse est aussi influencée par le niveau d'Énergie Magique."/>
-            </Label>
-            <Slider
-                id="speech-rate-slider"
-                min={0.5} max={2} step={0.1}
-                value={[speechRate]}
-                onValueChange={(value) => setSpeechRate(value[0])}
-                className="w-full mt-1"
-                disabled={isSpeaking}
-            />
-        </div>
+        {toolMode === 'genie' && (
+            <>
+                <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
+                    <DialogTrigger asChild>
+                        <Button variant="outline" className="w-full"><Settings2 className="mr-2 h-4 w-4" />Paramètres d'Affichage</Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[480px]">
+                        <DialogHeader><DialogTitle>Paramètres d'Affichage (Mode Génie)</DialogTitle></DialogHeader>
+                        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
+                            {/* Font Size */}
+                            <div>
+                                <Label htmlFor="fontSize" className="text-sm">Taille de Police: {displaySettings.fontSize}px</Label>
+                                <Slider id="fontSize" min={12} max={32} step={1} value={[displaySettings.fontSize]} onValueChange={(val) => handleSettingChange('fontSize', val[0])} />
+                            </div>
+                            {/* Font Family */}
+                            <div>
+                                <Label htmlFor="fontFamily" className="text-sm">Police</Label>
+                                <Select value={displaySettings.fontFamily} onValueChange={(val) => handleSettingChange('fontFamily', val as ImmersiveReaderSettings['fontFamily'])}>
+                                    <SelectTrigger id="fontFamily"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="System">Système</SelectItem>
+                                        <SelectItem value="Sans-Serif">Sans-Serif</SelectItem>
+                                        <SelectItem value="Serif">Serif</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {/* Line Height */}
+                            <div>
+                                <Label htmlFor="lineHeight" className="text-sm">Hauteur de Ligne: {displaySettings.lineHeight.toFixed(1)}</Label>
+                                <Slider id="lineHeight" min={1.2} max={2.5} step={0.1} value={[displaySettings.lineHeight]} onValueChange={(val) => handleSettingChange('lineHeight', val[0])} />
+                            </div>
+                            {/* Letter Spacing */}
+                            <div>
+                                <Label htmlFor="letterSpacing" className="text-sm">Espacement Lettres: {displaySettings.letterSpacing}px</Label>
+                                <Slider id="letterSpacing" min={0} max={5} step={0.1} value={[displaySettings.letterSpacing]} onValueChange={(val) => handleSettingChange('letterSpacing', val[0])} />
+                            </div>
+                            {/* Word Spacing */}
+                            <div>
+                                <Label htmlFor="wordSpacing" className="text-sm">Espacement Mots: {displaySettings.wordSpacing}px</Label>
+                                <Slider id="wordSpacing" min={0} max={10} step={0.5} value={[displaySettings.wordSpacing]} onValueChange={(val) => handleSettingChange('wordSpacing', val[0])} />
+                            </div>
+                            {/* Theme */}
+                            <div>
+                                <Label htmlFor="theme" className="text-sm">Thème Couleur</Label>
+                                <Select value={displaySettings.theme as string} onValueChange={(val) => handleSettingChange('theme', val as ImmersiveReaderSettings['theme'])}>
+                                    <SelectTrigger id="theme"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="light">Clair</SelectItem>
+                                        <SelectItem value="dark">Sombre</SelectItem>
+                                        <SelectItem value="sepia">Sépia</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <DialogFooter><DialogClose asChild><Button type="button">Fermer</Button></DialogClose></DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <div>
+                    <Label htmlFor="speech-rate-slider-genie" className="text-sm font-medium text-foreground">
+                        Vitesse de lecture (Génie): {speechRate.toFixed(1)}x
+                    </Label>
+                    <Slider
+                        id="speech-rate-slider-genie"
+                        min={0.5} max={2} step={0.1}
+                        value={[speechRate]}
+                        onValueChange={(value) => setSpeechRate(value[0])}
+                        className="w-full mt-1"
+                        disabled={isSpeaking}
+                    />
+                </div>
+            </>
+        )}
 
 
         {(processedText || inputText) && (
@@ -187,9 +376,31 @@ export function ImmersiveReaderTool() {
             <h3 className="text-xl font-semibold text-primary">
               {processedText ? "Texte préparé pour la lecture :" : "Texte à lire :"}
             </h3>
-            <Card className="bg-muted/30 p-4 shadow-inner">
-              <CardContent className="text-base leading-relaxed whitespace-pre-wrap prose dark:prose-invert max-w-none">
-                <p>{processedText || inputText}</p>
+            <Card className="bg-muted/30 shadow-inner">
+              <CardContent 
+                className="text-base leading-relaxed whitespace-pre-wrap prose dark:prose-invert max-w-none p-4 min-h-[100px]"
+                style={textDisplayStyles}
+              >
+                {toolMode === 'genie' ? (
+                  words.map((word, index) => {
+                    // This logic tries to find if the current word is being spoken.
+                    // It sums up lengths of previous words and spaces to match charIndex.
+                    let wordStartIndex = 0;
+                    for (let i = 0; i < index; i++) {
+                        wordStartIndex += words[i].length;
+                    }
+                    const isCurrentWord = currentWordCharIndex !== -1 && 
+                                          wordStartIndex <= currentWordCharIndex && 
+                                          currentWordCharIndex < wordStartIndex + word.length;
+                    return (
+                      <span key={index} className={isCurrentWord ? "bg-primary/30 text-primary-foreground rounded px-0.5" : ""}>
+                        {word}
+                      </span>
+                    );
+                  })
+                ) : (
+                  <p>{processedText || inputText}</p>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -204,10 +415,12 @@ export function ImmersiveReaderTool() {
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground text-center w-full">
-          Astuce : Utilisez l'Énergie Magique pour ajuster la simplification du texte et la vitesse de lecture à vos besoins.
+          {toolMode === 'genie' 
+            ? "Utilisez les paramètres pour ajuster l'affichage à vos besoins."
+            : "L'intensité magique ajuste la simplification du texte et la vitesse de lecture."}
         </p>
       </CardFooter>
     </Card>
   );
 }
-
+    
