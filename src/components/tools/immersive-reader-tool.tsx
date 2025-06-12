@@ -8,9 +8,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Play, StopCircle, Loader2, Wand2, FileText, Volume2, Settings2, Info } from 'lucide-react';
+import { Play, StopCircle, Loader2, Wand2, FileText, Volume2, Settings2, Info, BookOpenText } from 'lucide-react'; // Added BookOpenText
 import { useToast } from "@/hooks/use-toast";
-import { simplifyText } from '@/ai/flows/simplify-text-flow'; // To be created
+import { simplifyText } from '@/ai/flows/simplify-text-flow'; 
 import { useAuth } from '@/contexts/AuthContext';
 
 // Default settings, more can be added later from ImmersiveReaderSettings type
@@ -20,7 +20,7 @@ export function ImmersiveReaderTool() {
   const [intensity, setIntensity] = useState<number>(3);
   const [inputText, setInputText] = useState<string>('');
   const [processedText, setProcessedText] = useState<string>(''); // For simplified text
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false); // General processing, not used currently
   const [isLoadingAI, setIsLoadingAI] = useState<boolean>(false);
 
   const { toast } = useToast();
@@ -210,3 +210,4 @@ export function ImmersiveReaderTool() {
     </Card>
   );
 }
+
