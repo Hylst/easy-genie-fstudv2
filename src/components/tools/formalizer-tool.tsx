@@ -1,17 +1,17 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react'; // Added useEffect, useRef, useCallback
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
-import { Wand2, ClipboardCopy, Loader2 } from 'lucide-react';
+import { Wand2, ClipboardCopy, Loader2, Mic } from 'lucide-react'; // Added Mic
 import { useToast } from "@/hooks/use-toast";
 import type { FormalizerStyle } from '@/types';
-import { formalizeText } from '@/ai/flows/formalize-text-flow'; // Will create this flow
+import { formalizeText } from '@/ai/flows/formalize-text-flow';
 
 const formalizerStyles: FormalizerStyle[] = [
   "Plus professionnel",
@@ -42,6 +42,61 @@ export function FormalizerTool() {
   const [selectedStyle, setSelectedStyle] = useState<FormalizerStyle>(formalizerStyles[0]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const { toast } = useToast();
+
+  const [isListeningInputText, setIsListeningInputText] = useState<boolean>(false);
+  const recognitionRefInputText = useRef<any>(null);
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRefInputText.current = new SpeechRecognition();
+      recognitionRefInputText.current.continuous = false;
+      recognitionRefInputText.current.interimResults = false;
+      recognitionRefInputText.current.lang = 'fr-FR';
+
+      recognitionRefInputText.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setInputText(prev => prev ? prev + ' ' + transcript : transcript);
+        toast({ title: "Texte ajouté !", description: "Votre voix a été transcrite." });
+      };
+      recognitionRefInputText.current.onerror = (event: any) => {
+        console.error("Speech recognition error (InputText)", event.error);
+        toast({ title: "Erreur de reconnaissance", description: `Le génie n'a pas pu comprendre: ${event.error}`, variant: "destructive" });
+      };
+      recognitionRefInputText.current.onend = () => {
+        setIsListeningInputText(false);
+      };
+    } else {
+      console.warn("Speech Recognition API not supported in this browser.");
+    }
+    return () => {
+      if (recognitionRefInputText.current) {
+        recognitionRefInputText.current.stop();
+      }
+    };
+  }, [toast]);
+
+  useEffect(() => {
+    if (isListeningInputText && recognitionRefInputText.current) {
+      try {
+        recognitionRefInputText.current.start();
+      } catch (e) {
+        setIsListeningInputText(false);
+        toast({ title: "Erreur Micro", description: "Impossible de démarrer l'écoute pour le texte original.", variant: "destructive" });
+      }
+    } else if (!isListeningInputText && recognitionRefInputText.current) {
+      recognitionRefInputText.current.stop();
+    }
+  }, [isListeningInputText, toast]);
+
+  const handleToggleListeningInputText = () => {
+    if (!recognitionRefInputText.current) {
+      toast({ title: "Micro non supporté", description: "La saisie vocale n'est pas disponible sur ce navigateur.", variant: "destructive" });
+      return;
+    }
+    setIsListeningInputText(prev => !prev);
+  };
+
 
   const handleFormalize = async () => {
     if (!inputText.trim()) {
@@ -103,19 +158,32 @@ export function FormalizerTool() {
         
         <div>
           <Label htmlFor="input-text" className="block text-sm font-medium text-foreground mb-1">Votre texte original :</Label>
-          <Textarea
-            id="input-text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Écrivez ou collez votre texte ici..."
-            rows={8}
-            className="w-full p-3 text-base leading-relaxed rounded-md shadow-inner bg-background focus:ring-primary"
-          />
+          <div className="relative">
+            <Textarea
+              id="input-text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Écrivez ou collez votre texte ici..."
+              rows={8}
+              className="w-full p-3 text-base leading-relaxed rounded-md shadow-inner bg-background focus:ring-primary pr-12"
+              disabled={isLoading || (isListeningInputText)}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleToggleListeningInputText}
+              className={`absolute top-3 right-3 text-muted-foreground hover:text-primary ${isListeningInputText ? 'text-red-500 animate-pulse' : ''}`}
+              aria-label={isListeningInputText ? "Arrêter l'écoute" : "Démarrer l'écoute vocale pour le texte original"}
+              disabled={isLoading || !recognitionRefInputText.current}
+            >
+              <Mic className="h-6 w-6" />
+            </Button>
+          </div>
         </div>
 
         <div>
           <Label htmlFor="style-select" className="block text-sm font-medium text-foreground mb-1">Rendre mon texte :</Label>
-          <Select value={selectedStyle} onValueChange={(value) => setSelectedStyle(value as FormalizerStyle)}>
+          <Select value={selectedStyle} onValueChange={(value) => setSelectedStyle(value as FormalizerStyle)} disabled={isLoading || isListeningInputText}>
             <SelectTrigger id="style-select" className="w-full">
               <SelectValue placeholder="Choisissez un style" />
             </SelectTrigger>
@@ -127,7 +195,7 @@ export function FormalizerTool() {
           </Select>
         </div>
 
-        <Button onClick={handleFormalize} disabled={isLoading} className="w-full text-lg py-3">
+        <Button onClick={handleFormalize} disabled={isLoading || isListeningInputText} className="w-full text-lg py-3">
           {isLoading ? (
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
           ) : (

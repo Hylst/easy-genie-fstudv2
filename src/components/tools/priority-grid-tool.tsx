@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useState, type FormEvent, useEffect, useCallback } from 'react';
+import { useState, type FormEvent, useEffect, useCallback, useRef } from 'react'; // Added useRef
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
-import { Trash2, PlusCircle, Edit, CalendarIcon, Clock, ChevronDown, ChevronUp, Info, WandSparkles, Save, Loader2, SparklesIcon, AlertTriangle } from 'lucide-react';
+import { Trash2, PlusCircle, Edit, CalendarIcon, Clock, ChevronDown, ChevronUp, Info, WandSparkles, Save, Loader2, SparklesIcon, AlertTriangle, Mic } from 'lucide-react'; // Added Mic
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -157,6 +157,60 @@ export function PriorityGridTool() {
   const [editSpecificDate, setEditSpecificDate] = useState<Date | undefined>(undefined);
   const [editSpecificTime, setEditSpecificTime] = useState<string>('');
   const [showEditTaskAdvanced, setShowEditTaskAdvanced] = useState(false);
+
+  const [isListeningNewTaskText, setIsListeningNewTaskText] = useState<boolean>(false);
+  const recognitionRefNewTaskText = useRef<any>(null);
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRefNewTaskText.current = new SpeechRecognition();
+      recognitionRefNewTaskText.current.continuous = false;
+      recognitionRefNewTaskText.current.interimResults = false;
+      recognitionRefNewTaskText.current.lang = 'fr-FR';
+
+      recognitionRefNewTaskText.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setNewTaskText(prev => prev ? prev + ' ' + transcript : transcript);
+        toast({ title: "Texte ajouté !", description: "Votre voix a été transcrite." });
+      };
+      recognitionRefNewTaskText.current.onerror = (event: any) => {
+        console.error("Speech recognition error (NewTaskText)", event.error);
+        toast({ title: "Erreur de reconnaissance", description: `Le génie n'a pas pu comprendre: ${event.error}`, variant: "destructive" });
+      };
+      recognitionRefNewTaskText.current.onend = () => {
+        setIsListeningNewTaskText(false);
+      };
+    } else {
+      console.warn("Speech Recognition API not supported in this browser.");
+    }
+    return () => {
+      if (recognitionRefNewTaskText.current) {
+        recognitionRefNewTaskText.current.stop();
+      }
+    };
+  }, [toast]);
+
+  useEffect(() => {
+    if (isListeningNewTaskText && recognitionRefNewTaskText.current) {
+      try {
+        recognitionRefNewTaskText.current.start();
+      } catch (e) {
+        setIsListeningNewTaskText(false);
+        toast({ title: "Erreur Micro", description: "Impossible de démarrer l'écoute pour la nouvelle tâche.", variant: "destructive" });
+      }
+    } else if (!isListeningNewTaskText && recognitionRefNewTaskText.current) {
+      recognitionRefNewTaskText.current.stop();
+    }
+  }, [isListeningNewTaskText, toast]);
+
+  const handleToggleListeningNewTaskText = () => {
+    if (!recognitionRefNewTaskText.current) {
+      toast({ title: "Micro non supporté", description: "La saisie vocale n'est pas disponible sur ce navigateur.", variant: "destructive" });
+      return;
+    }
+    setIsListeningNewTaskText(prev => !prev);
+  };
 
 
   const fetchTasks = useCallback(async () => {
@@ -590,15 +644,28 @@ export function PriorityGridTool() {
             <form onSubmit={handleAddTask} className="space-y-4">
               <div>
                 <Label htmlFor="new-task-text">Description de la tâche <span className="text-destructive">*</span></Label>
-                <Input
-                  id="new-task-text"
-                  value={newTaskText}
-                  onChange={(e) => setNewTaskText(e.target.value)}
-                  placeholder="Ex: Répondre aux e-mails importants"
-                  className="w-full mt-1 transition-all duration-200 ease-in-out hover:shadow-lg hover:animate-subtle-shake transform hover:scale-[1.01]"
-                  required
-                  disabled={!user || isSubmitting || isBulkDeleting}
-                />
+                <div className="flex items-center gap-1 mt-1">
+                  <Input
+                    id="new-task-text"
+                    value={newTaskText}
+                    onChange={(e) => setNewTaskText(e.target.value)}
+                    placeholder="Ex: Répondre aux e-mails importants"
+                    className="w-full transition-all duration-200 ease-in-out hover:shadow-lg hover:animate-subtle-shake transform hover:scale-[1.01]"
+                    required
+                    disabled={!user || isSubmitting || isBulkDeleting || isListeningNewTaskText}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    type="button"
+                    onClick={handleToggleListeningNewTaskText}
+                    className={`${isListeningNewTaskText ? 'text-red-500 animate-pulse' : ''}`}
+                    aria-label={isListeningNewTaskText ? "Arrêter l'écoute" : "Démarrer l'écoute vocale pour la description"}
+                    disabled={!user || isSubmitting || isBulkDeleting || !recognitionRefNewTaskText.current}
+                  >
+                    <Mic className="h-5 w-5" />
+                  </Button>
+                </div>
               </div>
 
               <div>
@@ -616,7 +683,7 @@ export function PriorityGridTool() {
                       </TooltipContent>
                     </Tooltip>
                   </Label>
-                  <Select value={selectedQuadrant} onValueChange={(value) => setSelectedQuadrant(value as QuadrantKey)} required disabled={!user || isSubmitting || isBulkDeleting}>
+                  <Select value={selectedQuadrant} onValueChange={(value) => setSelectedQuadrant(value as QuadrantKey)} required disabled={!user || isSubmitting || isBulkDeleting || isListeningNewTaskText}>
                       <SelectTrigger id="new-task-quadrant" className="w-full mt-1">
                           <SelectValue placeholder="Choisir quadrant" />
                       </SelectTrigger>
@@ -634,7 +701,7 @@ export function PriorityGridTool() {
                 variant="link"
                 onClick={() => setShowNewTaskAdvanced(!showNewTaskAdvanced)}
                 className="p-0 h-auto text-sm"
-                disabled={!user || isSubmitting || isBulkDeleting}
+                disabled={!user || isSubmitting || isBulkDeleting || isListeningNewTaskText}
               >
                 {showNewTaskAdvanced ? <ChevronUp className="mr-1 h-4 w-4"/> : <ChevronDown className="mr-1 h-4 w-4"/>}
                 Options avancées (fréquence, date, heure)
@@ -653,7 +720,7 @@ export function PriorityGridTool() {
                             <TooltipContent side="right"><p>À quelle fréquence cette tâche se répète-t-elle ? Choisissez "Une fois" si non récurrente.</p></TooltipContent>
                           </Tooltip>
                         </Label>
-                        <Select value={newFrequency || "once"} onValueChange={(value) => setNewFrequency(value as Frequency)} disabled={!user || isSubmitting || isBulkDeleting}>
+                        <Select value={newFrequency || "once"} onValueChange={(value) => setNewFrequency(value as Frequency)} disabled={!user || isSubmitting || isBulkDeleting || isListeningNewTaskText}>
                             <SelectTrigger id="new-task-frequency" className="w-full mt-1">
                                 <SelectValue placeholder="Choisir fréquence (optionnel)" />
                             </SelectTrigger>
@@ -672,7 +739,7 @@ export function PriorityGridTool() {
                             variant={"outline"}
                             className="w-full justify-start text-left font-normal mt-1"
                             id="new-task-date"
-                            disabled={!user || isSubmitting || isBulkDeleting}
+                            disabled={!user || isSubmitting || isBulkDeleting || isListeningNewTaskText}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
                             {newSpecificDate ? format(newSpecificDate, "PPP", { locale: fr }) : <span>Choisir une date</span>}
@@ -685,7 +752,7 @@ export function PriorityGridTool() {
                             onSelect={setNewSpecificDate}
                             initialFocus
                             locale={fr}
-                            disabled={!user || isSubmitting || isBulkDeleting}
+                            disabled={!user || isSubmitting || isBulkDeleting || isListeningNewTaskText}
                           />
                         </PopoverContent>
                       </Popover>
@@ -698,7 +765,7 @@ export function PriorityGridTool() {
                         value={newSpecificTime}
                         onChange={(e) => setNewSpecificTime(e.target.value)}
                         className="w-full mt-1"
-                        disabled={!user || isSubmitting || isBulkDeleting}
+                        disabled={!user || isSubmitting || isBulkDeleting || isListeningNewTaskText}
                       />
                     </div>
                   </div>
@@ -706,18 +773,18 @@ export function PriorityGridTool() {
               )}
 
               <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
-                <Button type="submit" className="w-full sm:w-auto" disabled={!user || isSubmitting || isBulkDeleting}>
+                <Button type="submit" className="w-full sm:w-auto" disabled={!user || isSubmitting || isBulkDeleting || isListeningNewTaskText}>
                   {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />}
                   {isSubmitting ? "Ajout..." : "Ajouter la Tâche"}
                 </Button>
 
                 <div className="flex gap-2 w-full sm:w-auto">
-                  <Button type="button" variant="outline" className="flex-1 sm:flex-none" onClick={handleOpenSavePresetDialog} disabled={!user || !newTaskText.trim() || isSubmitting || isBulkDeleting}>
+                  <Button type="button" variant="outline" className="flex-1 sm:flex-none" onClick={handleOpenSavePresetDialog} disabled={!user || !newTaskText.trim() || isSubmitting || isBulkDeleting || isListeningNewTaskText}>
                     <Save className="mr-2 h-4 w-4" /> Sauvegarder comme Preset
                   </Button>
                   <Dialog open={isPresetDialogOpen} onOpenChange={setIsPresetDialogOpen}>
                     <DialogTrigger asChild>
-                      <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={!user || isSubmitting || isBulkDeleting || isLoadingPresets}>
+                      <Button type="button" variant="outline" className="flex-1 sm:flex-none" disabled={!user || isSubmitting || isBulkDeleting || isLoadingPresets || isListeningNewTaskText}>
                         {isLoadingPresets ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
                         Charger un Preset
                       </Button>
@@ -1030,5 +1097,3 @@ export function PriorityGridTool() {
     </TooltipProvider>
   );
 }
-
-    
