@@ -200,7 +200,7 @@ export interface TimeFocusDisplayPreset extends TimeFocusSystemPreset {
 // Types for Immersive Reader
 export interface ImmersiveReaderSettings {
   fontSize: number; 
-  fontFamily: 'System' | 'Sans-Serif' | 'Serif' ; 
+  fontFamily: 'System' | 'Sans-Serif' | 'Serif' | 'OpenDyslexic'; 
   lineHeight: number; 
   letterSpacing: number; 
   wordSpacing: number; 

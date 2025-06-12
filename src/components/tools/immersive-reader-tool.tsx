@@ -68,8 +68,22 @@ export function ImmersiveReaderTool() {
     if (typeof window !== 'undefined') {
       const savedSettings = localStorage.getItem(IMMERSIVE_READER_SETTINGS_KEY);
       if (savedSettings) {
-        try { setDisplaySettings(JSON.parse(savedSettings)); }
-        catch (e) { console.error("Failed to parse saved display settings:", e); localStorage.removeItem(IMMERSIVE_READER_SETTINGS_KEY); }
+        try { 
+          const parsedSettings = JSON.parse(savedSettings);
+          // Ensure fontFamily is valid, fallback if not
+          const validFontFamilies: ImmersiveReaderSettings['fontFamily'][] = ['System', 'Sans-Serif', 'Serif', 'OpenDyslexic'];
+          if (!validFontFamilies.includes(parsedSettings.fontFamily)) {
+            parsedSettings.fontFamily = defaultDisplaySettings.fontFamily;
+          }
+          setDisplaySettings(parsedSettings); 
+        }
+        catch (e) { 
+          console.error("Failed to parse saved display settings:", e); 
+          localStorage.removeItem(IMMERSIVE_READER_SETTINGS_KEY); 
+          setDisplaySettings(defaultDisplaySettings);
+        }
+      } else {
+        setDisplaySettings(defaultDisplaySettings);
       }
       const savedMode = localStorage.getItem(IMMERSIVE_READER_MODE_KEY);
       if (savedMode === 'genie' || savedMode === 'magique') { setToolMode(savedMode as 'magique' | 'genie'); }
@@ -197,9 +211,9 @@ export function ImmersiveReaderTool() {
       };
     } else {
       const baseRate = 0.7;
-      const rateIncrement = (1.3 - 0.7) / 4;
+      const rateIncrement = (1.3 - 0.7) / 4; // Scale from 0.7 to 1.3 across 5 intensity levels
       utteranceRef.current.rate = Math.max(0.5, Math.min(2, baseRate + (intensity - 1) * rateIncrement));
-      utteranceRef.current.onboundary = null;
+      utteranceRef.current.onboundary = null; // No word highlighting in magic mode
     }
 
     utteranceRef.current.onstart = () => setIsSpeaking(true);
@@ -229,7 +243,7 @@ export function ImmersiveReaderTool() {
       if (intensity <= 2) return "Simplification IA légère du texte.";
       if (intensity <= 4) return "Simplification IA modérée.";
       return "Simplification IA marquée pour une lecture facile.";
-    } else {
+    } else { // 'magique' mode
       if (intensity <= 2) return "Simplification IA légère, vitesse de lecture plus lente.";
       if (intensity <= 4) return "Simplification IA modérée, vitesse de lecture normale.";
       return "Simplification IA marquée, vitesse de lecture plus rapide.";
@@ -267,7 +281,7 @@ export function ImmersiveReaderTool() {
     padding: '1rem',
     borderRadius: 'var(--radius)',
   } : {
-    padding: '1rem',
+    padding: '1rem', // Default padding for magic mode display
   };
 
   return (
@@ -380,6 +394,7 @@ export function ImmersiveReaderTool() {
                                             <SelectItem value="System">Système</SelectItem>
                                             <SelectItem value="Sans-Serif">Sans-Serif</SelectItem>
                                             <SelectItem value="Serif">Serif</SelectItem>
+                                            <SelectItem value="OpenDyslexic">OpenDyslexic</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>

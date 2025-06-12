@@ -110,3 +110,48 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* OpenDyslexic Font Faces - User must add font files to /public/fonts/OpenDyslexic/ */
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: 
+    url('/fonts/OpenDyslexic/OpenDyslexic-Regular.woff2') format('woff2'),
+    url('/fonts/OpenDyslexic/OpenDyslexic-Regular.woff') format('woff'),
+    url('/fonts/OpenDyslexic/OpenDyslexic-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: 
+    url('/fonts/OpenDyslexic/OpenDyslexic-Bold.woff2') format('woff2'),
+    url('/fonts/OpenDyslexic/OpenDyslexic-Bold.woff') format('woff'),
+    url('/fonts/OpenDyslexic/OpenDyslexic-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: 
+    url('/fonts/OpenDyslexic/OpenDyslexic-Italic.woff2') format('woff2'),
+    url('/fonts/OpenDyslexic/OpenDyslexic-Italic.woff') format('woff'),
+    url('/fonts/OpenDyslexic/OpenDyslexic-Italic.otf') format('opentype');
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: 
+    url('/fonts/OpenDyslexic/OpenDyslexic-BoldItalic.woff2') format('woff2'),
+    url('/fonts/OpenDyslexic/OpenDyslexic-BoldItalic.woff') format('woff'),
+    url('/fonts/OpenDyslexic/OpenDyslexic-BoldItalic.otf') format('opentype');
+  font-weight: bold;
+  font-style: italic;
+  font-display: swap;
+}
