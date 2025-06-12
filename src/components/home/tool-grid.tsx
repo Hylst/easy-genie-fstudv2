@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import type { Tool } from '@/types';
-import { Brain, LayoutGrid, ListTree, Timer, FileEdit, CalendarCheck } from 'lucide-react';
+import { Brain, LayoutGrid, ListTree, Timer, FileEdit, CalendarCheck, BookOpenText } from 'lucide-react';
 
 // Import new SVG illustrations
 import { TaskBreakerIllustration } from '@/components/icons/tool-illustrations/task-breaker-illustration';
@@ -11,6 +11,7 @@ import { PriorityGridIllustration } from '@/components/icons/tool-illustrations/
 import { BrainDumpIllustration } from '@/components/icons/tool-illustrations/brain-dump-illustration';
 import { FormalizerIllustration } from '@/components/icons/tool-illustrations/formalizer-illustration';
 import { RoutineBuilderIllustration } from '@/components/icons/tool-illustrations/routine-builder-illustration';
+import { ImmersiveReaderIllustration } from '@/components/icons/tool-illustrations/immersive-reader-illustration';
 
 
 const tools: Tool[] = [
@@ -61,6 +62,14 @@ const tools: Tool[] = [
     href: '/routine-builder', 
     icon: CalendarCheck,
     illustration: RoutineBuilderIllustration
+  },
+  { 
+    id: 'immersivereader', 
+    name: 'Lecteur Immersif', 
+    description: 'Facilite la lecture grâce à des outils de focus, de simplification et de synthèse vocale.', 
+    href: '/immersive-reader', 
+    icon: BookOpenText, // Changed icon
+    illustration: ImmersiveReaderIllustration 
   },
   // { id: 'decisionhelper', name: 'DecisionHelper', description: 'Assistant pour prendre des décisions.', href: '/decision-helper', icon: GitFork, illustration: PlaceholderIllustration },
   // { id: 'moodtracker', name: 'MoodTracker', description: 'Suivi d\'humeur et d\'énergie au fil du temps.', href: '/mood-tracker', icon: Smile, illustration: PlaceholderIllustration },

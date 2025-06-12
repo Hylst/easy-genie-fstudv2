@@ -4,4 +4,5 @@ import './flows/formalize-text-flow';
 import './flows/analyze-brain-dump-flow';
 import './flows/suggest-routine-flow';
 import './flows/breakdown-task-flow';
+import './flows/simplify-text-flow';
     

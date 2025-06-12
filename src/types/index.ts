@@ -196,3 +196,16 @@ export interface TimeFocusSystemPreset {
 export interface TimeFocusDisplayPreset extends TimeFocusSystemPreset {
     isCustom?: boolean; // For UI distinction
 }
+
+// Types for Immersive Reader
+export interface ImmersiveReaderSettings {
+  fontSize: number; // e.g., 16, 18, 20
+  fontFamily: 'System' | 'Sans-Serif' | 'Serif' | 'OpenDyslexic' ; // OpenDyslexic would require font loading
+  lineHeight: number; // e.g., 1.5, 1.8, 2.0
+  letterSpacing: number; // e.g., 0, 0.05, 0.1 (em or rem)
+  wordSpacing: number; // e.g., 0, 0.1, 0.2 (em or rem)
+  theme: 'light' | 'dark' | 'sepia' | { background: string; foreground: string };
+  focusMode: 'none' | 'line' | 'paragraph';
+  speechRate: number; // 0.5 to 2.0
+  // Potentially voice selection if API supports it
+}

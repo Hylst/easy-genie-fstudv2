@@ -24,7 +24,7 @@
     - Updated save/download to include AI analysis if present.
 - **RoutineBuilder Tool Initial Implementation**:
     - Enabled in ToolGrid with `CalendarCheck` icon and `genie planner` hint.
-    - Created page `src/app/routine-builder/page.tsx` with banner image.
+    - Created page `src/app/routine-builder/page.tsx`. (Removed banner image)
     - Developed `RoutineBuilderTool` component (`src/components/tools/routine-builder-tool.tsx`):
         - Includes `IntensitySelector`.
         - Allows creating, deleting routines (name, description, days, steps).
@@ -50,6 +50,7 @@
     - Added new button "Charger Tâche Décomposée" with ~16 pre-decomposed task models, categorized.
     - Fixed bug related to loading from history not correctly updating the UI.
     - Ensured "Effacer Tâche Actuelle" correctly clears the UI and focuses input.
+    - Added detailed tooltips for all interactive elements in TaskBreakerTool.
 - **TaskBreaker Tool AI Enhancement & Recursive Breakdown**:
     - Implemented Genkit AI flow `breakdown-task-flow.ts` for "Décomposer" button to provide sub-task suggestions based on main task and intensity.
     - Updated `TaskBreakerTool` UI to call AI, display suggestions, and handle loading states.
@@ -76,6 +77,7 @@
         - Selecting a preset populates the "Add Task" form, expanding advanced options if needed.
         - Toast notification confirms preset loading.
         - Added more preset categories and items.
+    - Added voice input for "Description de la tâche" field.
 - **PriorityGrid Tool Enhancements (Phase 1.5 - Custom Presets)**:
     - Added "Sauvegarder comme Preset" button to save current task form details as a custom preset.
     - Custom presets are named by the user via a dialog.
@@ -193,13 +195,22 @@
     *   UI refresh logic in `PriorityGridTool` (calling `fetchTasks()`) after add, delete, update, toggle complete to ensure UI consistency.
     *   **Database Integration for Custom Presets**: Integrated `PriorityGridCustomPreset` with `AppDataService` for Supabase synchronization. `PriorityGridTool` now uses this service instead of `localStorage`.
 - **TimeFocus Tool Enhancements**:
-    - Fixed bug preventing editing of Pomodoro configuration fields.
+    - Fixed bug preventing editing of Pomodoro configuration fields for intensity 1.
     - Added system presets for timer configurations (e.g., "Pomodoro Classique", "Focus Long").
     - Implemented saving and loading of custom user-defined timer configurations (presets) via `AppDataService` (IndexedDB + Supabase).
     - Implemented sounds generated via Web Audio API (tick, halfway, end bell, race start).
     - Added sound toggle button with localStorage persistence.
     - Reorganized layout for task name and Pomodoro configuration sections.
-
+    - Added input field for "Durée du minuteur" when intensity is 1 (Minuteur simple).
+- **Formaliseur Magique Enhancements**:
+    - Added "Télécharger le texte" button (.txt format).
+    - Added voice input for "Votre texte original".
+- **Nouveau Outil : Lecteur Immersif / Focus Lecture (Phase 1)**:
+    - Ajouté à la grille d'outils (`BookOpenText` icon, nouvelle illustration SVG).
+    - Page `src/app/immersive-reader/page.tsx` et composant `src/components/tools/immersive-reader-tool.tsx` créés.
+    - UI de base : zone de saisie, `IntensitySelector`, zone d'affichage, boutons Play/Stop.
+    - Implémentation de la synthèse vocale (Web Speech API), vitesse contrôlée par l'intensité.
+    - Nouveau flux Genkit `simplify-text-flow.ts` pour simplifier le texte en fonction de l'intensité, appelé par un bouton "Préparer le Texte".
 
 ## To Do
 
@@ -211,7 +222,6 @@
         * Background sync (web workers).
 - **Grille des Priorités Enhancements (Post-Database Integration)**:
     - Implement a full client-side recurrence engine (managing completion cycles, auto-generating next instances for daily, weekly tasks etc.).
-    - Integrate voice input for adding/editing tasks in PriorityGrid.
     - Explore AI assistance for quadrant suggestion based on task text and intensity.
 - **Décomposeur de Tâches Enhancements**:
     - Consider voice input for adding/editing individual sub-tasks (currently only for main task).
@@ -222,6 +232,11 @@
     - Optional: Add specific time input for routines.
     *   Optional: Interactive execution mode (checking off steps as done for a specific day).
     - Refine voice input for editing existing step text (currently only appends).
+- **Lecteur Immersif Enhancements (Phase 2)**:
+    - Surlignage synchronisé du mot/de la phrase pendant la lecture.
+    - Options de personnalisation (police, espacement, couleurs de thème).
+    - Mode focus (ligne/paragraphe).
+    - Potentielle intégration de la base de données pour les préférences utilisateur.
 - Integrate Genkit AI more deeply into other existing tools (TimeFocus modes) to make the "magic level" (intensity) impact their behavior.
 - Implement remaining tools from `tool-grid.tsx` (DecisionHelper, MoodTracker, FocusMode) with their specific functionalities, intensity level integrations, and database persistence.
 - Flesh out "Étincelles" (Sparks) page content.
