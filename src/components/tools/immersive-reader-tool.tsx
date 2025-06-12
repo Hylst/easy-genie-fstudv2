@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from '../ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 const DEFAULT_SPEECH_RATE_GENIE = 1;
 const IMMERSIVE_READER_SETTINGS_KEY = "easyGenieImmersiveReaderSettings_v1";
@@ -39,6 +40,9 @@ const defaultDisplaySettings: ImmersiveReaderSettings = {
   theme: 'light',
   focusMode: 'none',
 };
+
+const VALID_FONT_FAMILIES: ImmersiveReaderSettings['fontFamily'][] = ['System', 'Sans-Serif', 'Serif', 'OpenDyslexic'];
+
 
 export function ImmersiveReaderTool() {
   const [intensity, setIntensity] = useState<number>(3);
@@ -69,10 +73,9 @@ export function ImmersiveReaderTool() {
       const savedSettings = localStorage.getItem(IMMERSIVE_READER_SETTINGS_KEY);
       if (savedSettings) {
         try { 
-          const parsedSettings = JSON.parse(savedSettings);
+          const parsedSettings = JSON.parse(savedSettings) as ImmersiveReaderSettings;
           // Ensure fontFamily is valid, fallback if not
-          const validFontFamilies: ImmersiveReaderSettings['fontFamily'][] = ['System', 'Sans-Serif', 'Serif', 'OpenDyslexic'];
-          if (!validFontFamilies.includes(parsedSettings.fontFamily)) {
+          if (!VALID_FONT_FAMILIES.includes(parsedSettings.fontFamily)) {
             parsedSettings.fontFamily = defaultDisplaySettings.fontFamily;
           }
           setDisplaySettings(parsedSettings); 
@@ -209,11 +212,11 @@ export function ImmersiveReaderTool() {
       utteranceRef.current.onboundary = (event) => {
         if (event.name === 'word') { setCurrentWordCharIndex(event.charIndex); }
       };
-    } else {
+    } else { // 'magique' mode
       const baseRate = 0.7;
-      const rateIncrement = (1.3 - 0.7) / 4; // Scale from 0.7 to 1.3 across 5 intensity levels
+      const rateIncrement = (1.3 - 0.7) / 4; 
       utteranceRef.current.rate = Math.max(0.5, Math.min(2, baseRate + (intensity - 1) * rateIncrement));
-      utteranceRef.current.onboundary = null; // No word highlighting in magic mode
+      utteranceRef.current.onboundary = null; 
     }
 
     utteranceRef.current.onstart = () => setIsSpeaking(true);
@@ -243,7 +246,7 @@ export function ImmersiveReaderTool() {
       if (intensity <= 2) return "Simplification IA légère du texte.";
       if (intensity <= 4) return "Simplification IA modérée.";
       return "Simplification IA marquée pour une lecture facile.";
-    } else { // 'magique' mode
+    } else { 
       if (intensity <= 2) return "Simplification IA légère, vitesse de lecture plus lente.";
       if (intensity <= 4) return "Simplification IA modérée, vitesse de lecture normale.";
       return "Simplification IA marquée, vitesse de lecture plus rapide.";
@@ -262,7 +265,7 @@ export function ImmersiveReaderTool() {
       }
       const text = await navigator.clipboard.readText();
       setInputText(prev => prev ? prev + '\n' + text : text);
-      setProcessedText(''); // Clear processed text as input has changed
+      setProcessedText(''); 
       toast({ title: "Texte collé !", description: "Le contenu du presse-papiers a été ajouté." });
     } catch (err) {
       console.error('Failed to read clipboard contents: ', err);
@@ -272,7 +275,7 @@ export function ImmersiveReaderTool() {
 
   const textDisplayStyles = toolMode === 'genie' ? {
     fontSize: `${displaySettings.fontSize}px`,
-    fontFamily: displaySettings.fontFamily === 'System' ? 'inherit' : displaySettings.fontFamily,
+    fontFamily: displaySettings.fontFamily === 'System' ? 'inherit' : `'${displaySettings.fontFamily}'`,
     lineHeight: displaySettings.lineHeight,
     letterSpacing: `${displaySettings.letterSpacing}px`,
     wordSpacing: `${displaySettings.wordSpacing}px`,
@@ -281,7 +284,8 @@ export function ImmersiveReaderTool() {
     padding: '1rem',
     borderRadius: 'var(--radius)',
   } : {
-    padding: '1rem', // Default padding for magic mode display
+    padding: '1rem', 
+    borderRadius: 'var(--radius)',
   };
 
   return (
@@ -451,7 +455,10 @@ export function ImmersiveReaderTool() {
             </h3>
             <Card className="bg-card shadow-inner">
               <div
-                className="text-base leading-relaxed whitespace-pre-wrap prose dark:prose-invert max-w-none min-h-[100px]"
+                className={cn(
+                    "text-base leading-relaxed whitespace-pre-wrap max-w-none min-h-[100px]",
+                    toolMode === 'magique' && "prose dark:prose-invert" 
+                  )}
                 style={textDisplayStyles}
               >
                 {toolMode === 'genie' && words.length > 0 ? (
@@ -493,3 +500,4 @@ export function ImmersiveReaderTool() {
     </Card>
   );
 }
+
