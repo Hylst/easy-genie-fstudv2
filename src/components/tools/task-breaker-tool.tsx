@@ -43,6 +43,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getAllTaskBreakerTasks,
@@ -549,7 +550,7 @@ const preDecomposedTaskPresets: PreDecomposedTaskPreset[] = [
 
 interface FetchTaskDataOptions {
   newContextToSet?: string;
-  preserveActiveState?: boolean; // If true, don't try to load "latest" context
+  preserveActiveState?: boolean; 
 }
 
 const buildTree = (tasks: UITaskBreakerTask[], parentId: string | null = null): UITaskBreakerTask[] => {
@@ -562,11 +563,11 @@ const buildTree = (tasks: UITaskBreakerTask[], parentId: string | null = null): 
     }));
 };
 
-const mapDbTasksToUiTasks = (dbTasks: TaskBreakerTask[], expandedStates: Record<string, boolean>): UITaskBreakerTask[] => {
+const mapDbTasksToUiTasks = (dbTasks: TaskBreakerTask[], currentExpandedStates: Record<string, boolean>): UITaskBreakerTask[] => {
     return dbTasks.map(dbTask => ({
         ...dbTask,
-        isExpanded: expandedStates[dbTask.id] || false,
-        subTasks: [] // Will be populated by buildTree
+        isExpanded: currentExpandedStates[dbTask.id] || false,
+        subTasks: [] 
     }));
 };
 
@@ -574,8 +575,9 @@ const mapDbTasksToUiTasks = (dbTasks: TaskBreakerTask[], expandedStates: Record<
 export function TaskBreakerTool() {
   const [intensity, setIntensity] = useState<number>(3);
   const [mainTaskInput, setMainTaskInput] = useState<string>('');
-  const [currentMainTaskContext, setCurrentMainTaskContext] = useState<string>('');
   const mainTaskTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const [currentMainTaskContext, setCurrentMainTaskContext] = useState<string>('');
 
   const [allUiTasksFlat, setAllUiTasksFlat] = useState<UITaskBreakerTask[]>([]);
   const [taskTree, setTaskTree] = useState<UITaskBreakerTask[]>([]);
@@ -613,8 +615,7 @@ export function TaskBreakerTool() {
 
   const currentMainTaskContextRef = useRef(currentMainTaskContext);
   useEffect(() => { currentMainTaskContextRef.current = currentMainTaskContext; }, [currentMainTaskContext]);
-
-
+  
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedExpanded = localStorage.getItem(TASK_BREAKER_EXPANDED_STATE_KEY);
@@ -623,14 +624,14 @@ export function TaskBreakerTool() {
           setExpandedStates(JSON.parse(savedExpanded));
         } catch (e) {
           console.error("Failed to parse expanded states from localStorage", e);
-          setExpandedStates({}); // Reset if parsing fails
+          setExpandedStates({});
         }
       }
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && Object.keys(expandedStates).length > 0) { // Only save if not empty
+    if (typeof window !== 'undefined' && Object.keys(expandedStates).length > 0) {
       localStorage.setItem(TASK_BREAKER_EXPANDED_STATE_KEY, JSON.stringify(expandedStates));
     }
   }, [expandedStates]);
@@ -638,7 +639,6 @@ export function TaskBreakerTool() {
 
   const fetchTaskData = useCallback(async (options: FetchTaskDataOptions = {}) => {
     const { newContextToSet, preserveActiveState = false } = options;
-
     if (!user) {
       setAllUiTasksFlat([]); setTaskTree([]); setCustomCommonPresets([]); setHistory([]);
       setMainTaskInput(''); setCurrentMainTaskContext(''); setExpandedStates({});
@@ -655,48 +655,37 @@ export function TaskBreakerTool() {
       let currentExpandedFromStorage: Record<string, boolean> = {};
       if (typeof window !== 'undefined') {
         const saved = localStorage.getItem(TASK_BREAKER_EXPANDED_STATE_KEY);
-        if (saved) {
-          try { currentExpandedFromStorage = JSON.parse(saved); }
-          catch (e) { console.error("Failed to parse expanded states from localStorage for merge", e); }
-        }
+        if (saved) { try { currentExpandedFromStorage = JSON.parse(saved); } catch (e) { console.error(e);}}
       }
       
       setAllUiTasksFlat(mapDbTasksToUiTasks(dbTasks, currentExpandedFromStorage));
       setCustomCommonPresets(dbCustomPresets);
       setHistory(dbHistory);
-      setExpandedStates(currentExpandedFromStorage); // Initialize with localStorage
+      setExpandedStates(currentExpandedFromStorage); 
 
-      let finalContextToDisplay = currentMainTaskContextRef.current; // Preserve current context by default
-      let finalMainInputValue = mainTaskInputRef.current; // Preserve current input by default
-
-      if (newContextToSet !== undefined) { // A specific context is being forced (e.g., after loading history)
-        finalContextToDisplay = newContextToSet;
-        finalMainInputValue = newContextToSet; // Sync input field with the new context
-      } else if (!preserveActiveState) { // Standard load/refresh, try to load latest or default to empty
+      if (newContextToSet !== undefined) {
+        setCurrentMainTaskContext(newContextToSet);
+        setMainTaskInput(newContextToSet);
+      } else if (!preserveActiveState) {
         const latestContextTask = dbTasks
           .filter(t => !t.parent_id && t.main_task_text_context)
           .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
         
-        const contextFromDb = latestContextTask ? latestContextTask.main_task_text_context || '' : '';
-        finalContextToDisplay = contextFromDb;
+        const contextToLoad = latestContextTask ? latestContextTask.main_task_text_context || '' : '';
+        setCurrentMainTaskContext(contextToLoad);
         
-        if (!mainTaskInputRef.current && contextFromDb) { // If input is empty, load the latest context into it
-          finalMainInputValue = contextFromDb;
-        } else if (!mainTaskInputRef.current && !contextFromDb) { // If input is empty and no DB context, clear input
-          finalMainInputValue = '';
+        if (!mainTaskInputRef.current && contextToLoad) {
+          setMainTaskInput(contextToLoad);
+        } else if (!mainTaskInputRef.current && !contextToLoad) {
+          setMainTaskInput('');
         }
-        // If mainTaskInputRef.current has text (e.g. user typing, or loaded suggestion), it's preserved.
       }
-      
-      setCurrentMainTaskContext(finalContextToDisplay);
-      setMainTaskInput(finalMainInputValue);
-
     } catch (error) { 
-      console.error("Error fetching Décomposeur de Tâches data:", error);
-      toast({ title: "Erreur de chargement", description: "Impossible de charger les données.", variant: "destructive" });
+      console.error("Error fetching TaskBreaker data:", error);
+      toast({ title: "Erreur de chargement", description: (error as Error).message, variant: "destructive" });
     } 
     finally { setIsLoadingData(false); }
-  }, [user, toast, isOnline]); // Removed expandedStates, will be handled by its own useEffect or specific setters
+  }, [user, toast, isOnline]); 
 
   useEffect(() => {
     fetchTaskData();
@@ -704,8 +693,8 @@ export function TaskBreakerTool() {
 
 
   useEffect(() => {
-    const tasksForCurrentContext = currentMainTaskContext
-        ? allUiTasksFlat.filter(t => t.main_task_text_context === currentMainTaskContext)
+    const tasksForCurrentContext = currentMainTaskContextRef.current 
+        ? allUiTasksFlat.filter(t => t.main_task_text_context === currentMainTaskContextRef.current)
         : [];
     
     const tasksWithCurrentExpansion = tasksForCurrentContext.map(t => ({
@@ -784,20 +773,20 @@ export function TaskBreakerTool() {
     setIsLoadingAI(true);
     setLoadingAITaskId(parentId);
 
-    let contextForNewTasks = currentMainTaskContextRef.current; // Use ref for most up-to-date
+    let contextForNewTasks = currentMainTaskContextRef.current;
     if (!parentId) { 
-      if (!mainTaskInputRef.current.trim()) { // Use ref for most up-to-date
-        toast({ title: "Tâche principale vide", description: "Veuillez entrer une tâche principale.", variant: "destructive" });
+      if (!mainTaskInputRef.current.trim()) {
+        toast({ title: "Tâche principale vide", variant: "destructive" });
         setIsLoadingAI(false); setLoadingAITaskId(null); return;
       }
       contextForNewTasks = mainTaskInputRef.current;
       if (currentMainTaskContextRef.current !== mainTaskInputRef.current) {
-          setCurrentMainTaskContext(mainTaskInputRef.current); // Update active context state
+          setCurrentMainTaskContext(mainTaskInputRef.current);
       }
     } else { 
       const parentTask = allUiTasksFlat.find(t => t.id === parentId);
       if (!parentTask || !parentTask.main_task_text_context) {
-        toast({ title: "Erreur de contexte", description: "Contexte de la tâche parente introuvable.", variant: "destructive" });
+        toast({ title: "Erreur de contexte", variant: "destructive" });
         setIsLoadingAI(false); setLoadingAITaskId(null); return;
       }
       contextForNewTasks = parentTask.main_task_text_context;
@@ -843,17 +832,17 @@ export function TaskBreakerTool() {
 
     setIsSubmitting(true);
     
-    let contextForNewTask = currentMainTaskContextRef.current; // Use ref
-    if (!parentId) { // Adding a direct sub-task to the main task in the input field
-        if (!mainTaskInputRef.current.trim()) { // Use ref
+    let contextForNewTask = currentMainTaskContextRef.current;
+    if (!parentId) { 
+        if (!mainTaskInputRef.current.trim()) {
             toast({ title: "Tâche principale vide", variant: "destructive" });
             setIsSubmitting(false); return;
         }
-        contextForNewTask = mainTaskInputRef.current; // Task being decomposed is from input
-        if (currentMainTaskContextRef.current !== mainTaskInputRef.current) { // If input differs from context, set new context
+        contextForNewTask = mainTaskInputRef.current;
+        if (currentMainTaskContextRef.current !== mainTaskInputRef.current) {
             setCurrentMainTaskContext(mainTaskInputRef.current);
         }
-    } else { // Adding a sub-task to an existing sub-task in the tree
+    } else { 
         const parentTask = allUiTasksFlat.find(t => t.id === parentId);
         if (!parentTask || !parentTask.main_task_text_context) {
             toast({ title: "Erreur de contexte parent", variant: "destructive" });
@@ -1066,7 +1055,7 @@ export function TaskBreakerTool() {
         if (entry.intensity_on_save) setIntensity(entry.intensity_on_save);
         
         setExpandedStates(prev => ({ ...prev, ...newExpandedStatesForLoad }));
-        await fetchTaskData({ newContextToSet: newMainTaskContext }); // This will set mainTaskInput and currentMainTaskContext
+        await fetchTaskData({ newContextToSet: newMainTaskContext }); 
         
         setShowHistoryDialog(false);
         toast({ title: "Chargé depuis l'historique!", description: `"${entry.name}" est prêt.` });
@@ -1234,31 +1223,76 @@ export function TaskBreakerTool() {
     return (
       <div style={{ marginLeft: `${task.depth * 15}px` }} className="mb-1.5">
         <div className={`flex items-center gap-1 p-1.5 border rounded-md bg-background hover:bg-muted/50 transition-colors ${task.is_completed ? 'opacity-60' : ''}`}>
+          <TooltipProvider>
           { (task.subTasks && task.subTasks.length > 0) || allUiTasksFlat.some(t => t.parent_id === task.id && t.main_task_text_context === task.main_task_text_context) || task.isExpanded ? (
-             <Button variant="ghost" size="icon" onClick={() => toggleSubTaskExpansion(task.id)} className="h-6 w-6 p-0 shrink-0">
-              {task.isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => toggleSubTaskExpansion(task.id)} className="h-6 w-6 p-0 shrink-0">
+                  {task.isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Afficher ou masquer les sous-tâches de cette étape.</p></TooltipContent>
+            </Tooltip>
           ) : ( <span className="w-6 h-6 inline-block shrink-0"></span>  )}
-          <Button variant="ghost" size="icon" onClick={() => toggleSubTaskCompletion(task.id)} aria-label={task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée"} className="h-6 w-6 p-0 shrink-0" disabled={isSubmitting || isLoadingAI || !user}>
-            {task.is_completed ? <CheckSquare className="text-green-500 h-4 w-4" /> : <Square className="text-muted-foreground h-4 w-4" />}
-          </Button>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => toggleSubTaskCompletion(task.id)} aria-label={task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée"} className="h-6 w-6 p-0 shrink-0" disabled={isSubmitting || isLoadingAI || !user}>
+                  {task.is_completed ? <CheckSquare className="text-green-500 h-4 w-4" /> : <Square className="text-muted-foreground h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>{task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée"}</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Input
             value={task.text}
             onChange={(e) => handleSubTaskTextChange(task.id, e.target.value)}
             className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed ? 'line-through text-muted-foreground' : ''} transition-all duration-200 ease-in-out hover:shadow-inner hover:animate-subtle-shake transform hover:scale-[1.005]`}
             disabled={isSubmitting || isLoadingAI || !user}
           />
-          <Button variant="ghost" size="icon" onClick={() => handleGenieBreakdown(task.text, task.id)} aria-label="Décomposer cette tâche avec le Génie" disabled={isCurrentlyLoadingAI || isLoadingAI || isSubmitting || !user} className="h-6 w-6 p-0 shrink-0">
-            {isCurrentlyLoadingAI ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="text-primary h-4 w-4" />}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => handleDeleteSubTask(task.id)} aria-label="Supprimer la sous-tâche" disabled={isSubmitting ||isLoadingAI || !user} className="h-6 w-6 p-0 shrink-0">
-            <Trash2 className="text-destructive w-4 h-4" />
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => handleGenieBreakdown(task.text, task.id)} aria-label="Décomposer cette tâche avec le Génie" disabled={isCurrentlyLoadingAI || isLoadingAI || isSubmitting || !user} className="h-6 w-6 p-0 shrink-0">
+                  {isCurrentlyLoadingAI ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="text-primary h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Le Génie décomposera cette étape spécifique en sous-sous-tâches.</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                 <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" aria-label="Supprimer la sous-tâche" disabled={isSubmitting ||isLoadingAI || !user} className="h-6 w-6 p-0 shrink-0">
+                            <Trash2 className="text-destructive w-4 h-4" />
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader><AlertDialogTitle>Supprimer cette étape ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Êtes-vous sûr de vouloir supprimer "{task.text}" et toutes ses sous-étapes dépendantes ?
+                        </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDeleteSubTask(task.id)}>Supprimer</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+              </TooltipTrigger>
+              <TooltipContent><p>Supprime cette étape et toutes ses sous-étapes dépendantes.</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         {task.isExpanded && (
         <div style={{ marginLeft: `20px` }} className="mt-1 pl-1 flex gap-2 items-center">
+          <Label htmlFor={`add-subtask-${task.id}`} className="sr-only">Ajouter une sous-tâche à {task.text}</Label>
           <Input
+            id={`add-subtask-${task.id}`}
             value={newChildSubTaskText[task.id] || ''}
             onChange={(e) => setNewChildSubTaskText(prev => ({ ...prev, [task.id]: e.target.value }))}
             placeholder="Ajouter une sous-tâche ici..."
@@ -1266,9 +1300,16 @@ export function TaskBreakerTool() {
             onKeyPress={(e) => { if (e.key === 'Enter' && !isLoadingAI && !isSubmitting) handleAddManualSubTask(task.id); }}
             disabled={isLoadingAI || isSubmitting || !user}
           />
-          <Button onClick={() => handleAddManualSubTask(task.id)} variant="outline" size="sm" disabled={isLoadingAI || isSubmitting || !(newChildSubTaskText[task.id] || '').trim() || !user} className="h-8 text-xs">
-            <PlusCircle className="mr-1 h-3 w-3" /> Ajouter
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                  <Button onClick={() => handleAddManualSubTask(task.id)} variant="outline" size="sm" disabled={isLoadingAI || isSubmitting || !(newChildSubTaskText[task.id] || '').trim() || !user} className="h-8 text-xs">
+                    <PlusCircle className="mr-1 h-3 w-3" /> Ajouter
+                  </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Ajoute manuellement une sous-tâche à l'étape "{task.text}".</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         )}
 
@@ -1286,6 +1327,7 @@ export function TaskBreakerTool() {
 
 
   return (
+    <TooltipProvider>
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader className="flex flex-col md:flex-row justify-between md:items-start gap-4">
           <div className="flex-grow">
@@ -1311,7 +1353,17 @@ export function TaskBreakerTool() {
         {user && (
           <>
             <div>
-              <label htmlFor="main-task" className="block text-sm font-medium text-foreground mb-1">Tâche principale à décomposer :</label>
+              <div className="flex items-center mb-1">
+                <Label htmlFor="main-task" className="block text-sm font-medium text-foreground">Tâche principale à décomposer :</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-5 w-5 ml-1 p-0"><Info className="h-3 w-3"/></Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Entrez ici la tâche globale que vous souhaitez diviser en étapes plus petites. Le Génie utilisera ce texte comme base pour ses suggestions.</p></TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <div className="flex gap-2 items-center">
                 <Textarea
                   ref={mainTaskTextareaRef}
@@ -1323,21 +1375,35 @@ export function TaskBreakerTool() {
                   rows={2}
                   disabled={isLoadingAI || isListening || isSubmitting || isLoadingData}
                 />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleToggleVoiceInput}
-                  className={`${isListening ? 'text-red-500 animate-pulse' : ''} self-start`}
-                  aria-label={isListening ? "Arrêter l'écoute" : "Dicter la tâche principale"}
-                  disabled={isLoadingAI || isSubmitting || isLoadingData || !recognitionRef.current}
-                >
-                  <Mic className="h-5 w-5" />
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleToggleVoiceInput}
+                        className={`${isListening ? 'text-red-500 animate-pulse' : ''} self-start`}
+                        aria-label={isListening ? "Arrêter l'écoute" : "Dicter la tâche principale"}
+                        disabled={isLoadingAI || isSubmitting || isLoadingData || !recognitionRef.current}
+                      >
+                        <Mic className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Cliquez pour dicter votre tâche principale. Votre navigateur vous demandera l'autorisation d'utiliser le microphone.</p></TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
-              <Button onClick={() => handleGenieBreakdown(mainTaskInputRef.current, null)} disabled={isLoadingAI || !mainTaskInputRef.current.trim() || isListening || isSubmitting || isLoadingData || (isLoadingAI && loadingAITaskId !== null)} className="mt-2">
-                  {(isLoadingAI && loadingAITaskId === null) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
-                  Décomposer Tâche Principale
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={() => handleGenieBreakdown(mainTaskInputRef.current, null)} disabled={isLoadingAI || !mainTaskInputRef.current.trim() || isListening || isSubmitting || isLoadingData || (isLoadingAI && loadingAITaskId !== null)} className="mt-2">
+                        {(isLoadingAI && loadingAITaskId === null) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+                        Décomposer Tâche Principale
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Le Génie analysera la tâche principale ci-dessus et suggérera des sous-tâches en fonction du niveau d'Énergie Magique sélectionné. Les sous-tâches existantes (si le contexte est le même) seront conservées.</p></TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
 
             { (currentMainTaskContext || taskTree.length > 0 || isLoadingData) && (
@@ -1368,8 +1434,10 @@ export function TaskBreakerTool() {
                 )}
 
                 {!isLoadingData && currentMainTaskContext && (
-                  <div className="mt-4 flex gap-2">
+                  <div className="mt-4 flex gap-2 items-center">
+                    <Label htmlFor="add-direct-subtask" className="sr-only">Ajouter une sous-tâche directe à {currentMainTaskContext}</Label>
                     <Input
+                      id="add-direct-subtask"
                       value={newDirectSubTaskText}
                       onChange={(e) => setNewDirectSubTaskText(e.target.value)}
                       placeholder="Ajouter une sous-tâche manuellement à la tâche principale"
@@ -1377,9 +1445,16 @@ export function TaskBreakerTool() {
                       onKeyPress={(e) => {if (e.key === 'Enter' && !isLoadingAI && !isSubmitting && newDirectSubTaskText.trim()) handleAddManualSubTask(null);}}
                       disabled={isLoadingAI || isSubmitting || !user}
                     />
-                    <Button onClick={() => handleAddManualSubTask(null)} variant="outline" disabled={isLoadingAI || isSubmitting || !newDirectSubTaskText.trim() || !user}>
-                      <PlusCircle className="mr-2 h-4 w-4" /> Ajouter
-                    </Button>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button onClick={() => handleAddManualSubTask(null)} variant="outline" disabled={isLoadingAI || isSubmitting || !newDirectSubTaskText.trim() || !user}>
+                              <PlusCircle className="mr-2 h-4 w-4" /> Ajouter
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Ajoute manuellement le texte saisi comme une sous-tâche directe de la tâche principale affichée.</p></TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 )}
               </div>
@@ -1388,154 +1463,203 @@ export function TaskBreakerTool() {
         )}
 
         <div className="mt-8 pt-6 border-t flex flex-wrap justify-center items-center gap-3">
-            <Dialog open={showTaskSuggestionDialog} onOpenChange={setShowTaskSuggestionDialog}>
-                <DialogTrigger asChild>
-                    <Button variant="outline" disabled={!user || isLoadingData || isSubmitting || isLoadingAI}><ListChecks className="mr-2 h-4 w-4" /> Suggestions de Tâches</Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-lg md:max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>Suggestions de Tâches</DialogTitle>
-                        <DialogDescription>Choisissez une idée de tâche pour démarrer ou un de vos modèles mémorisés.</DialogDescription>
-                    </DialogHeader>
-                    <ScrollArea className="h-[50vh] pr-3">
-                        <Accordion type="multiple" defaultValue={['Mes Tâches Mémorisées', ...Object.keys(groupedSystemSuggestions)]} className="w-full">
-                            <AccordionItem value="Mes Tâches Mémorisées">
-                                <AccordionTrigger>Mes Tâches Mémorisées ({customCommonPresets.length})</AccordionTrigger>
-                                <AccordionContent>
-                                    {isLoadingData && <Loader2 className="h-5 w-5 animate-spin mx-auto my-2"/>}
-                                    {!isLoadingData && customCommonPresets.length === 0 && <p className="text-sm text-muted-foreground p-2">Aucun modèle personnalisé.</p>}
-                                    {!isLoadingData && customCommonPresets.map(preset => (
-                                        <div key={preset.id} className="flex items-center justify-between py-2 hover:bg-accent/50 rounded-md px-2">
-                                            <Button variant="ghost" className="flex-grow justify-start text-left h-auto" onClick={() => { handleLoadTaskSuggestion({id: preset.id, name: preset.name, taskText: preset.task_text, category: "Custom" }); setShowTaskSuggestionDialog(false); }}>
-                                                {preset.name}
-                                            </Button>
-                                            <Button variant="ghost" size="icon" onClick={() => handleDeleteCustomPreset(preset.id)} className="h-7 w-7" disabled={isSubmitting}>
-                                                <Trash2 className="h-4 w-4 text-destructive"/>
-                                            </Button>
-                                        </div>
-                                    ))}
-                                </AccordionContent>
-                            </AccordionItem>
-                             {Object.entries(groupedSystemSuggestions).map(([category, presets]) => (
-                                <AccordionItem value={category} key={category}>
-                                    <AccordionTrigger>{category} ({presets.length})</AccordionTrigger>
+            <TooltipProvider>
+                <Dialog open={showTaskSuggestionDialog} onOpenChange={setShowTaskSuggestionDialog}>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" disabled={!user || isLoadingData || isSubmitting || isLoadingAI}><ListChecks className="mr-2 h-4 w-4" /> Suggestions de Tâches</Button>
+                            </DialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Ouvre une liste de tâches prédéfinies ou vos modèles. Sélectionner une tâche la chargera dans le champ 'Tâche principale'.</p></TooltipContent>
+                    </Tooltip>
+                    <DialogContent className="sm:max-w-lg md:max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Suggestions de Tâches</DialogTitle>
+                            <DialogDescription>Choisissez une idée de tâche pour démarrer ou un de vos modèles mémorisés.</DialogDescription>
+                        </DialogHeader>
+                        <ScrollArea className="h-[50vh] pr-3">
+                            <Accordion type="multiple" defaultValue={['Mes Tâches Mémorisées', ...Object.keys(groupedSystemSuggestions)]} className="w-full">
+                                <AccordionItem value="Mes Tâches Mémorisées">
+                                    <AccordionTrigger>Mes Tâches Mémorisées ({customCommonPresets.length})</AccordionTrigger>
                                     <AccordionContent>
-                                        {presets.map(preset => (
-                                            <Button key={preset.id} variant="ghost" className="w-full justify-start text-left h-auto py-2 hover:bg-accent/50 rounded-md px-2" onClick={() => {handleLoadTaskSuggestion(preset); setShowTaskSuggestionDialog(false);}}>
-                                                {preset.name}
-                                            </Button>
+                                        {isLoadingData && <Loader2 className="h-5 w-5 animate-spin mx-auto my-2"/>}
+                                        {!isLoadingData && customCommonPresets.length === 0 && <p className="text-sm text-muted-foreground p-2">Aucun modèle personnalisé.</p>}
+                                        {!isLoadingData && customCommonPresets.map(preset => (
+                                            <div key={preset.id} className="flex items-center justify-between py-2 hover:bg-accent/50 rounded-md px-2">
+                                                <Button variant="ghost" className="flex-grow justify-start text-left h-auto" onClick={() => { handleLoadTaskSuggestion({id: preset.id, name: preset.name, taskText: preset.task_text, category: "Custom" }); setShowTaskSuggestionDialog(false); }}>
+                                                    {preset.name}
+                                                </Button>
+                                                <Button variant="ghost" size="icon" onClick={() => handleDeleteCustomPreset(preset.id)} className="h-7 w-7" disabled={isSubmitting}>
+                                                    <Trash2 className="h-4 w-4 text-destructive"/>
+                                                </Button>
+                                            </div>
                                         ))}
                                     </AccordionContent>
                                 </AccordionItem>
+                                {Object.entries(groupedSystemSuggestions).map(([category, presets]) => (
+                                    <AccordionItem value={category} key={category}>
+                                        <AccordionTrigger>{category} ({presets.length})</AccordionTrigger>
+                                        <AccordionContent>
+                                            {presets.map(preset => (
+                                                <Button key={preset.id} variant="ghost" className="w-full justify-start text-left h-auto py-2 hover:bg-accent/50 rounded-md px-2" onClick={() => {handleLoadTaskSuggestion(preset); setShowTaskSuggestionDialog(false);}}>
+                                                    {preset.name}
+                                                </Button>
+                                            ))}
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                ))}
+                            </Accordion>
+                        </ScrollArea>
+                        <DialogFooter>
+                            <DialogClose asChild><Button type="button" variant="secondary">Fermer</Button></DialogClose>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </TooltipProvider>
+
+            <TooltipProvider>
+                <Dialog open={showDecomposedPresetDialog} onOpenChange={setShowDecomposedPresetDialog}>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" disabled={!user || isLoadingData || isSubmitting || isLoadingAI}><BrainCircuit className="mr-2 h-4 w-4" /> Charger Tâche Décomposée</Button>
+                            </DialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Ouvre une liste de modèles de tâches déjà décomposées. Sélectionner un modèle chargera sa structure.</p></TooltipContent>
+                    </Tooltip>
+                    <DialogContent className="sm:max-w-lg md:max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Charger un Modèle de Tâche Décomposée</DialogTitle>
+                            <DialogDescription>Choisissez un modèle de tâche déjà décomposée pour commencer rapidement.</DialogDescription>
+                        </DialogHeader>
+                        <ScrollArea className="h-[50vh] pr-3">
+                            <Accordion type="multiple" defaultValue={Object.keys(groupedPreDecomposedPresets)} className="w-full">
+                                {Object.entries(groupedPreDecomposedPresets).map(([category, presets]) => (
+                                    <AccordionItem value={category} key={category}>
+                                        <AccordionTrigger>{category} ({presets.length})</AccordionTrigger>
+                                        <AccordionContent>
+                                            {presets.map(preset => (
+                                                <Button key={preset.id} variant="ghost" className="w-full justify-start text-left h-auto py-2 hover:bg-accent/50 rounded-md px-2" onClick={() => {handleLoadDecomposedPreset(preset); setShowDecomposedPresetDialog(false);}}>
+                                                    {preset.name}
+                                                </Button>
+                                            ))}
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                ))}
+                            </Accordion>
+                        </ScrollArea>
+                        <DialogFooter>
+                            <DialogClose asChild><Button type="button" variant="secondary">Fermer</Button></DialogClose>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button variant="outline" onClick={handleOpenSaveCustomPresetDialog} disabled={!user || !mainTaskInputRef.current.trim() || isLoadingData || isSubmitting || isLoadingAI}>
+                            <BookmarkPlus className="mr-2 h-4 w-4" /> Mémoriser Tâche
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Sauvegarde le texte actuel de la 'Tâche principale' comme un modèle réutilisable.</p></TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button variant="outline" onClick={handleOpenSaveToHistoryDialog} disabled={!user || (!currentMainTaskContextRef.current.trim() && taskTree.length === 0) || isLoadingData || isSubmitting || isLoadingAI}>
+                            <Save className="mr-2 h-4 w-4" /> Sauvegarder Décomposition
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Sauvegarde la tâche principale actuelle ET toute sa structure de sous-tâches dans votre historique.</p></TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+                <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" disabled={isLoadingData || isSubmitting || isLoadingAI || !user}><History className="mr-2 h-4 w-4" /> Historique ({history.length})</Button>
+                            </DialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Affiche la liste de vos décompositions précédemment sauvegardées.</p></TooltipContent>
+                    </Tooltip>
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader><DialogTitle>Historique des Décompositions</DialogTitle></DialogHeader>
+                        <ScrollArea className="h-[400px] pr-3">
+                            {isLoadingData && <Loader2 className="h-5 w-5 animate-spin mx-auto my-2"/>}
+                            {!isLoadingData && history.length === 0 && <p className="text-muted-foreground text-center py-4">Votre historique est vide.</p>}
+                            <div className="space-y-3">
+                            {!isLoadingData && history.map(entry => (
+                                <Card key={entry.id} className="p-3">
+                                    <CardHeader className="p-0 pb-2"><CardTitle className="text-base">{entry.name}</CardTitle></CardHeader>
+                                    <CardContent className="p-0 pb-2">
+                                        <p className="text-xs text-muted-foreground truncate">Tâche principale : {entry.main_task_text}</p>
+                                        <p className="text-xs text-muted-foreground">Sauvegardé le : {new Date(entry.created_at).toLocaleDateString()}</p>
+                                    </CardContent>
+                                    <CardFooter className="p-0 flex justify-end gap-2">
+                                        <Button size="sm" variant="outline" onClick={() => {handleLoadFromHistory(entry); setShowHistoryDialog(false);}} disabled={isSubmitting}>Charger</Button>
+                                        <Button size="sm" variant="destructive" onClick={() => handleDeleteFromHistory(entry.id)} disabled={isSubmitting}>Supprimer</Button>
+                                    </CardFooter>
+                                </Card>
                             ))}
-                        </Accordion>
-                    </ScrollArea>
-                    <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="secondary">Fermer</Button></DialogClose>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                            </div>
+                        </ScrollArea>
+                        <DialogFooter> <DialogClose asChild><Button type="button" variant="secondary">Fermer</Button></DialogClose></DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </TooltipProvider>
 
-            <Dialog open={showDecomposedPresetDialog} onOpenChange={setShowDecomposedPresetDialog}>
-                <DialogTrigger asChild>
-                    <Button variant="outline" disabled={!user || isLoadingData || isSubmitting || isLoadingAI}><BrainCircuit className="mr-2 h-4 w-4" /> Charger Tâche Décomposée</Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-lg md:max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>Charger un Modèle de Tâche Décomposée</DialogTitle>
-                        <DialogDescription>Choisissez un modèle de tâche déjà décomposée pour commencer rapidement.</DialogDescription>
-                    </DialogHeader>
-                     <ScrollArea className="h-[50vh] pr-3">
-                        <Accordion type="multiple" defaultValue={Object.keys(groupedPreDecomposedPresets)} className="w-full">
-                            {Object.entries(groupedPreDecomposedPresets).map(([category, presets]) => (
-                                <AccordionItem value={category} key={category}>
-                                    <AccordionTrigger>{category} ({presets.length})</AccordionTrigger>
-                                    <AccordionContent>
-                                        {presets.map(preset => (
-                                            <Button key={preset.id} variant="ghost" className="w-full justify-start text-left h-auto py-2 hover:bg-accent/50 rounded-md px-2" onClick={() => {handleLoadDecomposedPreset(preset); setShowDecomposedPresetDialog(false);}}>
-                                                {preset.name}
-                                            </Button>
-                                        ))}
-                                    </AccordionContent>
-                                </AccordionItem>
-                            ))}
-                        </Accordion>
-                    </ScrollArea>
-                    <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="secondary">Fermer</Button></DialogClose>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <TooltipProvider>
+                <DropdownMenu>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" disabled={!user || (!currentMainTaskContextRef.current.trim() && taskTree.length === 0) || isLoadingData || isSubmitting || isLoadingAI}><Download className="mr-2 h-4 w-4" /> Exporter</Button>
+                            </DropdownMenuTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Permet d'exporter la décomposition actuelle sous différents formats.</p></TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent>
+                        <DropdownMenuLabel>Options d'Export</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleExport('txt')}>Fichier Texte (.txt)</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExport('md')}>Fichier Markdown (.md)</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExport('email')}><Mail className="mr-2 h-4 w-4" /> Envoyer par Email</DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </TooltipProvider>
 
-            <Button variant="outline" onClick={handleOpenSaveCustomPresetDialog} disabled={!user || !mainTaskInputRef.current.trim() || isLoadingData || isSubmitting || isLoadingAI}>
-                <BookmarkPlus className="mr-2 h-4 w-4" /> Mémoriser Tâche
-            </Button>
-
-            <Button variant="outline" onClick={handleOpenSaveToHistoryDialog} disabled={!user || (!currentMainTaskContextRef.current.trim() && taskTree.length === 0) || isLoadingData || isSubmitting || isLoadingAI}>
-                <Save className="mr-2 h-4 w-4" /> Sauvegarder Décomposition
-            </Button>
-
-            <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
-                <DialogTrigger asChild>
-                    <Button variant="outline" disabled={isLoadingData || isSubmitting || isLoadingAI || !user}><History className="mr-2 h-4 w-4" /> Historique ({history.length})</Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader><DialogTitle>Historique des Décompositions</DialogTitle></DialogHeader>
-                    <ScrollArea className="h-[400px] pr-3">
-                        {isLoadingData && <Loader2 className="h-5 w-5 animate-spin mx-auto my-2"/>}
-                        {!isLoadingData && history.length === 0 && <p className="text-muted-foreground text-center py-4">Votre historique est vide.</p>}
-                        <div className="space-y-3">
-                        {!isLoadingData && history.map(entry => (
-                            <Card key={entry.id} className="p-3">
-                                <CardHeader className="p-0 pb-2"><CardTitle className="text-base">{entry.name}</CardTitle></CardHeader>
-                                <CardContent className="p-0 pb-2">
-                                    <p className="text-xs text-muted-foreground truncate">Tâche principale : {entry.main_task_text}</p>
-                                    <p className="text-xs text-muted-foreground">Sauvegardé le : {new Date(entry.created_at).toLocaleDateString()}</p>
-                                </CardContent>
-                                <CardFooter className="p-0 flex justify-end gap-2">
-                                    <Button size="sm" variant="outline" onClick={() => {handleLoadFromHistory(entry); setShowHistoryDialog(false);}} disabled={isSubmitting}>Charger</Button>
-                                    <Button size="sm" variant="destructive" onClick={() => handleDeleteFromHistory(entry.id)} disabled={isSubmitting}>Supprimer</Button>
-                                </CardFooter>
-                            </Card>
-                        ))}
-                        </div>
-                    </ScrollArea>
-                     <DialogFooter> <DialogClose asChild><Button type="button" variant="secondary">Fermer</Button></DialogClose></DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="outline" disabled={!user || (!currentMainTaskContextRef.current.trim() && taskTree.length === 0) || isLoadingData || isSubmitting || isLoadingAI}><Download className="mr-2 h-4 w-4" /> Exporter</Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <DropdownMenuLabel>Options d'Export</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleExport('txt')}>Fichier Texte (.txt)</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExport('md')}>Fichier Markdown (.md)</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExport('email')}><Mail className="mr-2 h-4 w-4" /> Envoyer par Email</DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-
-            <AlertDialog open={showClearTaskDialog} onOpenChange={setShowClearTaskDialog}>
-                <AlertDialogTrigger asChild>
-                    <Button variant="destructive" disabled={!user || (!currentMainTaskContextRef.current.trim() && taskTree.length === 0 && mainTaskInputRef.current === '') || isLoadingData || isSubmitting || isLoadingAI}>
-                        <Eraser className="mr-2 h-4 w-4" /> Effacer Tâche Actuelle
-                    </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Êtes-vous sûr ?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Cette action effacera la tâche principale et toutes ses sous-tâches de la base de données et localement. Cette action est irréversible.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Annuler</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleClearCurrentTask}>Oui, effacer</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            <TooltipProvider>
+                <AlertDialog open={showClearTaskDialog} onOpenChange={setShowClearTaskDialog}>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" disabled={!user || (!currentMainTaskContextRef.current.trim() && taskTree.length === 0 && mainTaskInputRef.current === '') || isLoadingData || isSubmitting || isLoadingAI}>
+                                    <Eraser className="mr-2 h-4 w-4" /> Effacer Tâche Actuelle
+                                </Button>
+                            </AlertDialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Supprime la tâche principale actuellement affichée et toutes ses sous-tâches. Une confirmation sera demandée.</p></TooltipContent>
+                    </Tooltip>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Êtes-vous sûr ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Cette action effacera la tâche principale et toutes ses sous-tâches de la base de données et localement. Cette action est irréversible.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleClearCurrentTask}>Oui, effacer</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </TooltipProvider>
         </div>
       </CardContent>
       <CardFooter>
@@ -1562,7 +1686,8 @@ export function TaskBreakerTool() {
             <DialogFooter>
                 <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
                 <Button onClick={handleSaveToHistory} disabled={!currentBreakdownName.trim() || isSubmitting}>
-                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : null} Sauvegarder
+                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Save className="h-4 w-4 mr-2"/>} 
+                    Sauvegarder
                 </Button>
             </DialogFooter>
         </DialogContent>
@@ -1593,11 +1718,13 @@ export function TaskBreakerTool() {
             <DialogFooter>
                 <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Annuler</Button></DialogClose>
                 <Button onClick={handleSaveCustomPreset} disabled={isSubmitting || !newCustomPresetNameInput.trim() || !mainTaskInputRef.current.trim()}>
-                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : null} Mémoriser
+                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Save className="h-4 w-4 mr-2"/>} 
+                  Mémoriser
                 </Button>
             </DialogFooter>
         </DialogContent>
       </Dialog>
     </Card>
+    </TooltipProvider>
   );
 }
