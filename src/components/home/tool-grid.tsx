@@ -1,20 +1,70 @@
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import type { Tool } from '@/types';
-import { Brain, LayoutGrid, ListTree, Timer, FileEdit, CalendarCheck, GitFork, Smile, Monitor } from 'lucide-react';
+import { Brain, LayoutGrid, ListTree, Timer, FileEdit, CalendarCheck } from 'lucide-react';
+
+// Import new SVG illustrations
+import { TaskBreakerIllustration } from '@/components/icons/tool-illustrations/task-breaker-illustration';
+import { TimeFocusIllustration } from '@/components/icons/tool-illustrations/time-focus-illustration';
+import { PriorityGridIllustration } from '@/components/icons/tool-illustrations/priority-grid-illustration';
+import { BrainDumpIllustration } from '@/components/icons/tool-illustrations/brain-dump-illustration';
+import { FormalizerIllustration } from '@/components/icons/tool-illustrations/formalizer-illustration';
+import { RoutineBuilderIllustration } from '@/components/icons/tool-illustrations/routine-builder-illustration';
+
 
 const tools: Tool[] = [
-  { id: 'taskbreaker', name: 'Décomposeur de Tâches', description: 'Le Génie décompose vos projets complexes en étapes simples et lumineuses.', href: '/task-breaker', icon: ListTree, dataAiHint: 'magic scroll' },
-  { id: 'timefocus', name: 'TimeFocus', description: 'Minuteur configurable pour maintenir la concentration.', href: '/time-focus', icon: Timer, dataAiHint: 'magic hourglass' },
-  { id: 'prioritygrid', name: 'Grille des Priorités', description: 'Organisez vos tâches avec la matrice d\'Eisenhower enchantée.', href: '/priority-grid', icon: LayoutGrid, dataAiHint: 'crystal grid' },
-  { id: 'braindump', name: 'Décharge de pensées', description: 'Un espace pour vider votre esprit. Le Génie peut ensuite analyser et organiser vos idées.', href: '/brain-dump', icon: Brain, dataAiHint: 'thought cauldron' },
-  { id: 'formalizer', name: 'Formaliseur', description: 'Transforme le texte pour l\'adapter à différents styles et tons.', href: '/formalizer', icon: FileEdit, dataAiHint: 'quill writing' },
-  { id: 'routinebuilder', name: 'RoutineBuilder', description: 'Création de routines quotidiennes avec rappels.', href: '/routine-builder', icon: CalendarCheck, dataAiHint: 'genie planner' },
-  // { id: 'decisionhelper', name: 'DecisionHelper', description: 'Assistant pour prendre des décisions.', href: '/decision-helper', icon: GitFork, dataAiHint: 'magic compass' },
-  // { id: 'moodtracker', name: 'MoodTracker', description: 'Suivi d\'humeur et d\'énergie au fil du temps.', href: '/mood-tracker', icon: Smile, dataAiHint: 'mood potion' },
-  // { id: 'focusmode', name: 'FocusMode', description: 'Page web minimaliste pour travailler sans distractions.', href: '/focus-mode', icon: Monitor, dataAiHint: 'focus crystal' },
+  { 
+    id: 'taskbreaker', 
+    name: 'Décomposeur de Tâches', 
+    description: 'Le Génie décompose vos projets complexes en étapes simples et lumineuses.', 
+    href: '/task-breaker', 
+    icon: ListTree, 
+    illustration: TaskBreakerIllustration 
+  },
+  { 
+    id: 'timefocus', 
+    name: 'TimeFocus', 
+    description: 'Minuteur configurable pour maintenir la concentration et optimiser vos sessions de travail.', 
+    href: '/time-focus', 
+    icon: Timer, 
+    illustration: TimeFocusIllustration
+  },
+  { 
+    id: 'prioritygrid', 
+    name: 'Grille des Priorités', 
+    description: 'Organisez vos tâches avec la matrice d\'Eisenhower enchantée pour mieux décider quoi faire.', 
+    href: '/priority-grid', 
+    icon: LayoutGrid, 
+    illustration: PriorityGridIllustration
+  },
+  { 
+    id: 'braindump', 
+    name: 'Décharge de pensées', 
+    description: 'Un espace pour vider votre esprit. Le Génie peut ensuite analyser et organiser vos idées.', 
+    href: '/brain-dump', 
+    icon: Brain,
+    illustration: BrainDumpIllustration
+  },
+  { 
+    id: 'formalizer', 
+    name: 'Formaliseur', 
+    description: 'Transforme le texte pour l\'adapter à différents styles et tons, du plus pro au plus fun.', 
+    href: '/formalizer', 
+    icon: FileEdit,
+    illustration: FormalizerIllustration
+  },
+  { 
+    id: 'routinebuilder', 
+    name: 'RoutineBuilder', 
+    description: 'Créez et gérez vos routines quotidiennes et hebdomadaires avec l\'aide du Génie.', 
+    href: '/routine-builder', 
+    icon: CalendarCheck,
+    illustration: RoutineBuilderIllustration
+  },
+  // { id: 'decisionhelper', name: 'DecisionHelper', description: 'Assistant pour prendre des décisions.', href: '/decision-helper', icon: GitFork, illustration: PlaceholderIllustration },
+  // { id: 'moodtracker', name: 'MoodTracker', description: 'Suivi d\'humeur et d\'énergie au fil du temps.', href: '/mood-tracker', icon: Smile, illustration: PlaceholderIllustration },
+  // { id: 'focusmode', name: 'FocusMode', description: 'Page web minimaliste pour travailler sans distractions.', href: '/focus-mode', icon: Monitor, illustration: PlaceholderIllustration },
 ];
 
 export function ToolGrid() {
@@ -34,14 +84,9 @@ export function ToolGrid() {
                     <CardTitle className="text-2xl font-semibold group-hover:text-primary transition-colors">{tool.name}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <Image 
-                      src={`https://placehold.co/600x400.png`}
-                      alt={`${tool.name} placeholder image`}
-                      width={600}
-                      height={400}
-                      className="w-full h-48 object-cover rounded-md mb-4"
-                      data-ai-hint={tool.dataAiHint}
-                    />
+                    <div className="w-full h-48 rounded-md mb-4 overflow-hidden bg-muted/30">
+                      <tool.illustration className="w-full h-full object-contain" />
+                    </div>
                     <CardDescription className="text-base text-muted-foreground">{tool.description}</CardDescription>
                   </CardContent>
                 </Card>

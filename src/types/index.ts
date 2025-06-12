@@ -1,13 +1,14 @@
 
 import type { LucideIcon } from 'lucide-react';
+import type { SVGProps } from 'react';
 
 export interface Tool {
   id: string;
   name: string;
   description: string;
   href: string;
-  icon: LucideIcon;
-  dataAiHint: string;
+  icon: LucideIcon; // For the small icon in the header
+  illustration: React.ComponentType<SVGProps<SVGSVGElement>>; // For the card content
 }
 
 export interface IntensityLevel {
