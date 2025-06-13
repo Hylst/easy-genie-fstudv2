@@ -243,11 +243,11 @@ export function TimeFocusTool() {
         dialogTitle = "Temps écoulé !";
         dialogDescription = `Votre session de concentration de ${currentConfigWork} minutes${taskName ? ` sur "${taskName}"` : ''} est terminée.`;
         if (toolMode === 'genie') {
-           dialogDescription = `Vous avez complété 1 session pour un total de ${formatTime(accumulatedWorkTime + (currentConfigWork*60))} sur la tâche '${taskName || "non définie"}'.`;
-           setAccumulatedWorkTime(0); setCompletedWorkSessionsThisTask(0); // Reset for next simple timer if task name changes
+           dialogDescription = `Vous avez complété ${completedWorkSessionsThisTask + 1} session(s) pour un total de ${formatTime(accumulatedWorkTime + (currentConfigWork*60))} sur la tâche '${taskName || "non définie"}'.`;
+           // Do not reset accumulatedWorkTime and completedWorkSessionsThisTask here for simple timer if task name unchanged
         }
         newCurrentPomodoroCycle = 1; 
-      } else {
+      } else { // Pomodoro modes
         if (newTotalPomodorosCompleted % currentPomodorosPerCycle === 0) {
           nextMode = 'longBreak'; newTimeLeft = currentConfigLong * 60;
           dialogTitle = "Cycle Terminé ! Pause Longue Méritée !";
@@ -380,8 +380,14 @@ export function TimeFocusTool() {
   };
 
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60); const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const totalMinutes = Math.floor(seconds / 60);
+    if (totalMinutes < 60) {
+        return `${totalMinutes} min`;
+    } else {
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return `${hours}h ${minutes > 0 ? `${minutes}min` : ''}`.trim();
+    }
   };
 
   const progressPercentage = ((getCurrentModeFullDuration() - timerState.timeLeft) / getCurrentModeFullDuration()) * 100;
@@ -412,7 +418,7 @@ export function TimeFocusTool() {
 
   const handleLoadPreset = (preset: TimeFocusDisplayPreset) => {
     setConfigWorkDuration(preset.work); setConfigShortBreakDuration(preset.short); setConfigLongBreakDuration(preset.long); setConfigPomodorosPerCycle(preset.cycle);
-    if (intensity < 4) setIntensity(4);
+    if (toolMode === 'magique' && intensity < 4) setIntensity(4); // Switch to configurable intensity if in Magique mode
     const newTimeLeft = preset.work * 60;
     setTimerState(prev => ({ ...prev, isRunning: false, timeLeft: newTimeLeft, currentMode: 'work', pomodorosInCycle: preset.cycle, currentPomodoroCycle: 1, totalPomodorosCompleted: 0, lastTickPlayedAt: newTimeLeft, halfwayNotified: false }));
     setShowPresetDialog(false); toast({ title: `Preset "${preset.name}" chargé!` });
@@ -463,12 +469,18 @@ export function TimeFocusTool() {
     return () => { audio.pause(); };
   }, [toolMode, ambientSoundEnabled, timerState.isRunning, timerState.currentMode, currentAmbientSound, ambientSoundVolume]);
 
-  const isConfigEditable = !timerState.isRunning && intensity >= 4;
-  const isSimpleTimerConfigEditable = !timerState.isRunning && intensity === 1;
+  const isConfigEditable = !timerState.isRunning && (toolMode === 'genie' || intensity >= 4);
+  const isSimpleTimerConfigEditable = !timerState.isRunning && toolMode === 'magique' && intensity === 1;
 
   const handleSimpleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
-    if (rawValue === "") { setConfigWorkDuration(1); if (intensity === 1 && !timerState.isRunning && timerState.currentMode === 'work') { setTimerState(p => ({ ...p, timeLeft: 1 * 60, lastTickPlayedAt: 1 * 60, halfwayNotified: false })); } return; }
+    if (rawValue === "") { 
+      setConfigWorkDuration(1); 
+      if (intensity === 1 && toolMode === 'magique' && !timerState.isRunning && timerState.currentMode === 'work') { 
+          setTimerState(p => ({ ...p, timeLeft: 1 * 60, lastTickPlayedAt: 1 * 60, halfwayNotified: false })); 
+      } 
+      return; 
+    }
     const numValue = parseInt(rawValue, 10);
     if (!isNaN(numValue)) { const val = Math.max(1, numValue); setConfigWorkDuration(val); }
   };
@@ -523,7 +535,7 @@ export function TimeFocusTool() {
             <RotateCcw className="mr-2 h-6 w-6" /> Réinitialiser
           </Button>
         </div>
-        {(timerState.currentMode === 'shortBreak' || timerState.currentMode === 'longBreak') && (intensity > 1 || toolMode === 'genie') && (
+        {(timerState.currentMode === 'shortBreak' || timerState.currentMode === 'longBreak') && (toolMode === 'genie' || intensity > 1) && (
             <Button onClick={handleSkipBreak} variant="secondary" size="lg" className="w-full mt-2 text-lg py-3" disabled={timerState.isRunning}>
                 <SkipForward className="mr-2 h-6 w-6" /> Passer la Pause
             </Button>
@@ -534,11 +546,12 @@ export function TimeFocusTool() {
               <Label htmlFor="taskName">Nom de la tâche (optionnel) :</Label>
               <Input id="taskName" type="text" value={taskName}
                 onChange={(e) => {
-                    setTaskName(e.target.value);
-                    if (toolMode === 'genie') { // Reset stats if task name changes in Genie mode
+                    const newTaskName = e.target.value;
+                    if (toolMode === 'genie' && taskName !== newTaskName) { 
                         setAccumulatedWorkTime(0);
                         setCompletedWorkSessionsThisTask(0);
                     }
+                    setTaskName(newTaskName);
                 }}
                 placeholder="Sur quoi travaillez-vous ?"
                 className="mt-1 transition-all duration-200 ease-in-out hover:shadow-lg hover:animate-subtle-shake transform hover:scale-[1.01]"
@@ -546,11 +559,11 @@ export function TimeFocusTool() {
               />
             </div>
 
-            {toolMode === 'magique' && intensity === 1 && (
+            {isSimpleTimerConfigEditable && (
               <div><Label htmlFor="simpleTimerDurationConfig">Durée du minuteur (minutes)</Label><Input id="simpleTimerDurationConfig" type="number" value={configWorkDuration} onChange={handleSimpleDurationChange} min="1" disabled={!isSimpleTimerConfigEditable} className="mt-1 h-10"/></div>
             )}
 
-            {toolMode === 'magique' && intensity >= 4 && (
+            {isConfigEditable && toolMode === 'magique' && ( // Only show for Magique mode if intensity >= 4
               <Card className="p-4 bg-muted/50"><CardTitle className="text-md mb-3 text-center">Configuration Pomodoro Personnalisée</CardTitle>
                 <div className="grid grid-cols-2 gap-4 items-end">
                   <div><Label htmlFor="workDurationConfigM" className="text-xs">Travail (min)</Label><Input id="workDurationConfigM" type="number" value={configWorkDuration} onChange={e => setConfigWorkDuration(Math.max(1, +e.target.value))} min="1" disabled={!isConfigEditable} className="h-8"/></div>
@@ -568,7 +581,6 @@ export function TimeFocusTool() {
                 <AccordionItem value="genie-settings">
                     <AccordionTrigger className="text-lg font-medium text-primary"><Settings2 className="mr-2 h-5 w-5"/>Paramètres du Génie</AccordionTrigger>
                     <AccordionContent className="space-y-4 pt-2">
-                        {/* Genie Pomodoro Configuration (always available in Genie mode) */}
                          <Card className="p-4 bg-muted/50"><CardTitle className="text-md mb-3 text-center">Configuration Pomodoro (Génie)</CardTitle>
                             <div className="grid grid-cols-2 gap-4 items-end">
                                 <div><Label htmlFor="workDurationConfigG" className="text-xs">Travail (min)</Label><Input id="workDurationConfigG" type="number" value={configWorkDuration} onChange={e => setConfigWorkDuration(Math.max(1, +e.target.value))} min="1" disabled={timerState.isRunning} className="h-8"/></div>
@@ -690,4 +702,3 @@ export function TimeFocusTool() {
     </Card>
   );
 }
-```
