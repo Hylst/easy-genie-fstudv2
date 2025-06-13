@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText as BookOpenTextIcon, Sparkles, Brain, ClipboardPaste, Mic, Save, Trash2 } from 'lucide-react'; // Renamed to BookOpenTextIcon
+import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText as BookOpenTextIcon, Sparkles, Brain, ClipboardPaste, Mic, Save, Trash2, TextQuote } from 'lucide-react'; // Added TextQuote
 import { useToast } from "@/hooks/use-toast";
 import { simplifyText } from '@/ai/flows/simplify-text-flow';
 import { useAuth } from '@/contexts/AuthContext';
@@ -42,9 +42,9 @@ import { Separator } from '../ui/separator';
 
 
 const DEFAULT_SPEECH_RATE_GENIE = 1;
-const IMMERSIVE_READER_SETTINGS_KEY = "easyGenieImmersiveReaderSettings_v2"; // Incremented version for new structure
+const IMMERSIVE_READER_SETTINGS_KEY = "easyGenieImmersiveReaderSettings_v2";
 const IMMERSIVE_READER_MODE_KEY = "easyGenieImmersiveReaderMode_v1";
-const DISPLAY_PRESETS_STORAGE_KEY = "easyGenieImmersiveReaderDisplayPresets_v2"; // Incremented version
+const DISPLAY_PRESETS_STORAGE_KEY = "easyGenieImmersiveReaderDisplayPresets_v2";
 
 const VALID_FONT_FAMILIES: ImmersiveReaderSettings['fontFamily'][] = ['System', 'Sans-Serif', 'Serif', 'OpenDyslexic'];
 
@@ -56,7 +56,16 @@ const defaultDisplaySettings: ImmersiveReaderSettings = {
   wordSpacing: 1,
   theme: 'light',
   focusMode: 'none',
+  enableSentenceHighlighting: false,
 };
+
+interface ParsedTextElement {
+  text: string;
+  type: 'word' | 'space';
+  originalStartIndex: number; // character index in the full source text
+  originalEndIndex: number;   // character index in the full source text
+  sentenceGroupIndex: number; // index of the sentence group this element belongs to
+}
 
 
 export function ImmersiveReaderTool() {
@@ -76,8 +85,10 @@ export function ImmersiveReaderTool() {
 
   const [displaySettings, setDisplaySettings] = useState<ImmersiveReaderSettings>(defaultDisplaySettings);
   const [showSettingsDialog, setShowSettingsDialog] = useState<boolean>(false);
-  const [words, setWords] = useState<string[]>([]);
-  const [currentWordCharIndex, setCurrentWordCharIndex] = useState<number>(-1);
+  
+  const [parsedTextElements, setParsedTextElements] = useState<ParsedTextElement[]>([]);
+  const [currentWordCharIndex, setCurrentWordCharIndex] = useState<number>(-1); // Actual char index from speech engine
+  const [currentSpokenWordInfo, setCurrentSpokenWordInfo] = useState<{ originalStartIndex: number, sentenceGroupIndex: number } | null>(null);
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -99,7 +110,8 @@ export function ImmersiveReaderTool() {
           if (!VALID_FONT_FAMILIES.includes(parsedSettings.fontFamily)) {
             parsedSettings.fontFamily = defaultDisplaySettings.fontFamily;
           }
-          setDisplaySettings(parsedSettings);
+          // Ensure new settings have defaults if not present in localStorage
+          setDisplaySettings({ ...defaultDisplaySettings, ...parsedSettings });
         }
         catch (e) {
           console.error("Failed to parse saved display settings:", e);
@@ -113,26 +125,23 @@ export function ImmersiveReaderTool() {
       if (savedMode === 'genie' || savedMode === 'magique') { setToolMode(savedMode as 'magique' | 'genie'); }
 
       const savedDisplayPresets = localStorage.getItem(DISPLAY_PRESETS_STORAGE_KEY);
-      if (savedDisplayPresets) {
-        try { 
+       if (savedDisplayPresets) {
+        try {
           const parsedItems = JSON.parse(savedDisplayPresets);
           if (Array.isArray(parsedItems)) {
             const validPresets = parsedItems.filter(
               (p): p is ImmersiveReaderDisplayPreset =>
                 p &&
-                typeof p.name === 'string' &&
-                p.name.trim() !== "" &&
+                typeof p.name === 'string' && p.name.trim() !== "" &&
                 typeof p.settings === 'object' && p.settings !== null &&
-                VALID_FONT_FAMILIES.includes(p.settings.fontFamily) // Example of checking settings validity
+                VALID_FONT_FAMILIES.includes(p.settings.fontFamily) &&
+                typeof p.settings.enableSentenceHighlighting === 'boolean' // Check new setting
             );
             setDisplayPresets(validPresets);
-          } else {
-            setDisplayPresets([]); 
-          }
-        }
-        catch (e) { 
-          console.error("Failed to parse display presets from localStorage:", e); 
-          localStorage.removeItem(DISPLAY_PRESETS_STORAGE_KEY); 
+          } else { setDisplayPresets([]); }
+        } catch (e) {
+          console.error("Failed to parse display presets from localStorage:", e);
+          localStorage.removeItem(DISPLAY_PRESETS_STORAGE_KEY);
           setDisplayPresets([]);
         }
       }
@@ -149,7 +158,6 @@ export function ImmersiveReaderTool() {
 
   const saveDisplayPresetsToLocalStorage = useCallback((presets: ImmersiveReaderDisplayPreset[]) => {
     if (typeof window !== 'undefined') {
-      // Filter one last time before saving to ensure no empty names sneak in
       const presetsToSave = presets.filter(p => p.name && p.name.trim() !== "");
       localStorage.setItem(DISPLAY_PRESETS_STORAGE_KEY, JSON.stringify(presetsToSave));
     }
@@ -164,38 +172,84 @@ export function ImmersiveReaderTool() {
     if (synthesis && synthesis.speaking && !isSpeaking) { synthesis.cancel(); }
   }, [isSpeaking, synthesis]);
 
+  const generateDisplayElements = useCallback((text: string): ParsedTextElement[] => {
+    const elements: ParsedTextElement[] = [];
+    if (!text.trim()) return elements;
+
+    let sentenceGroupIndex = 0;
+    let currentOffset = 0;
+
+    // Regex to roughly split by sentences. This is a heuristic and may not be perfect.
+    // It tries to capture sequences ending in punctuation, or the final part of the text.
+    const sentenceRegex = /([^\.!?]+(?:[\.!?](?=\s+|$)|$))/g;
+    let matches;
+    const sentenceChunks: { text: string, originalStartIndex: number }[] = [];
+    
+    let lastIndex = 0;
+    while ((matches = sentenceRegex.exec(text)) !== null) {
+      sentenceChunks.push({ text: matches[0], originalStartIndex: matches.index });
+      lastIndex = matches.index + matches[0].length;
+    }
+    // If there's remaining text (e.g., no punctuation at the end)
+    if (lastIndex < text.length) {
+      sentenceChunks.push({ text: text.substring(lastIndex), originalStartIndex: lastIndex });
+    }
+    if (sentenceChunks.length === 0 && text.trim().length > 0) { // Handle single block of text with no sentence-ending punctuation
+      sentenceChunks.push({ text: text, originalStartIndex: 0 });
+    }
+
+
+    sentenceChunks.forEach(chunk => {
+      const sentenceText = chunk.text;
+      const sentenceOriginalStartOffset = chunk.originalStartIndex;
+      let wordOffsetInSentence = 0;
+
+      sentenceText.split(/(\s+)/).filter(Boolean).forEach(part => {
+        elements.push({
+          text: part,
+          type: /\s+/.test(part) ? 'space' : 'word',
+          originalStartIndex: sentenceOriginalStartOffset + wordOffsetInSentence,
+          originalEndIndex: sentenceOriginalStartOffset + wordOffsetInSentence + part.length,
+          sentenceGroupIndex: sentenceGroupIndex,
+        });
+        wordOffsetInSentence += part.length;
+      });
+      sentenceGroupIndex++;
+    });
+    return elements;
+  }, []);
+
+
   useEffect(() => {
-    const textToDisplay = processedText.trim() || inputText.trim();
-    setWords(textToDisplay.split(/(\s+)/).filter(Boolean)); 
+    const textToParse = toolMode === 'genie' ? (processedText.trim() || inputText.trim()) : '';
+    if (toolMode === 'genie') {
+      const newElements = generateDisplayElements(textToParse);
+      setParsedTextElements(newElements);
+      wordRefs.current = new Array(newElements.length).fill(null);
+    } else {
+      setParsedTextElements([]); // Clear for magic mode
+    }
     setCurrentWordCharIndex(-1);
+    setCurrentSpokenWordInfo(null);
     if (synthesis?.speaking) synthesis.cancel();
     setIsSpeaking(false);
-     wordRefs.current = [];
-  }, [inputText, processedText, synthesis]);
+  }, [inputText, processedText, toolMode, generateDisplayElements, synthesis]);
 
   useEffect(() => {
-    wordRefs.current = wordRefs.current.slice(0, words.length);
-  }, [words]);
+    wordRefs.current = wordRefs.current.slice(0, parsedTextElements.length);
+  }, [parsedTextElements]);
 
 
   useEffect(() => {
-    if (toolMode === 'genie' && isSpeaking && currentWordCharIndex !== -1 && words.length > 0) {
-        let charCount = 0;
-        let targetWordIndex = -1;
+    if (toolMode === 'genie' && isSpeaking && currentWordCharIndex !== -1 && parsedTextElements.length > 0) {
+        const currentElementIndex = parsedTextElements.findIndex(el => 
+            el.type === 'word' && 
+            el.originalStartIndex <= currentWordCharIndex && 
+            currentWordCharIndex < el.originalEndIndex
+        );
 
-        for (let i = 0; i < words.length; i++) {
-            const word = words[i];
-            if (word.trim() !== '') { 
-                 if (charCount <= currentWordCharIndex && currentWordCharIndex < charCount + word.length) {
-                    targetWordIndex = i;
-                    break;
-                }
-            }
-            charCount += word.length;
-        }
-        
-        if (targetWordIndex !== -1) {
-            const targetElement = wordRefs.current[targetWordIndex];
+        if (currentElementIndex !== -1) {
+            const targetElement = wordRefs.current[currentElementIndex];
             if (targetElement && typeof targetElement.scrollIntoView === 'function') {
                 targetElement.scrollIntoView({
                     behavior: 'smooth',
@@ -205,7 +259,7 @@ export function ImmersiveReaderTool() {
             }
         }
     }
-  }, [currentWordCharIndex, words, isSpeaking, toolMode]);
+  }, [currentWordCharIndex, parsedTextElements, isSpeaking, toolMode]);
 
 
   useEffect(() => {
@@ -300,17 +354,24 @@ export function ImmersiveReaderTool() {
     if (toolMode === 'genie') {
       utteranceRef.current.rate = speechRate;
       utteranceRef.current.onboundary = (event) => {
-        if (event.name === 'word') { setCurrentWordCharIndex(event.charIndex); }
+        if (event.name === 'word') { 
+          setCurrentWordCharIndex(event.charIndex); 
+          const currentElem = parsedTextElements.find(el => el.type === 'word' && el.originalStartIndex <= event.charIndex && event.charIndex < el.originalEndIndex);
+          if (currentElem) {
+            setCurrentSpokenWordInfo({ originalStartIndex: currentElem.originalStartIndex, sentenceGroupIndex: currentElem.sentenceGroupIndex });
+          }
+        }
       };
     } else { 
       const baseRate = 0.7;
       const rateIncrement = (1.3 - 0.7) / 4;
       utteranceRef.current.rate = Math.max(0.5, Math.min(2, baseRate + (intensity - 1) * rateIncrement));
       utteranceRef.current.onboundary = null;
+      setCurrentSpokenWordInfo(null);
     }
 
     utteranceRef.current.onstart = () => setIsSpeaking(true);
-    utteranceRef.current.onend = () => { setIsSpeaking(false); setCurrentWordCharIndex(-1); };
+    utteranceRef.current.onend = () => { setIsSpeaking(false); setCurrentWordCharIndex(-1); setCurrentSpokenWordInfo(null); };
     utteranceRef.current.onerror = (event) => {
       if (event.error === 'interrupted') {
         console.info("Speech synthesis interrupted:", event.error);
@@ -320,6 +381,7 @@ export function ImmersiveReaderTool() {
       }
       setIsSpeaking(false);
       setCurrentWordCharIndex(-1);
+      setCurrentSpokenWordInfo(null);
     };
 
     synthesis.speak(utteranceRef.current);
@@ -329,6 +391,7 @@ export function ImmersiveReaderTool() {
     if (synthesis && synthesis.speaking) { synthesis.cancel(); }
     setIsSpeaking(false);
     setCurrentWordCharIndex(-1);
+    setCurrentSpokenWordInfo(null);
   };
 
   const getIntensityDescription = () => {
@@ -554,6 +617,16 @@ export function ImmersiveReaderTool() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                <div className="flex items-center space-x-2 pt-2">
+                                  <Switch
+                                    id="sentence-highlight-switch"
+                                    checked={displaySettings.enableSentenceHighlighting}
+                                    onCheckedChange={(checked) => handleSettingChange('enableSentenceHighlighting', checked)}
+                                  />
+                                  <Label htmlFor="sentence-highlight-switch" className="text-sm flex items-center gap-1">
+                                    <TextQuote className="h-4 w-4" /> Surligner la phrase active
+                                  </Label>
+                                </div>
 
                                 <Separator className="my-2" />
 
@@ -564,10 +637,10 @@ export function ImmersiveReaderTool() {
                                       <SelectTrigger className="flex-grow"><SelectValue placeholder="Charger un préréglage..." /></SelectTrigger>
                                       <SelectContent>
                                         {isLoadingUserPresets && <div className="flex justify-center p-2"><Loader2 className="h-5 w-5 animate-spin"/></div>}
-                                        {!isLoadingUserPresets && displayPresets.length === 0 && (
+                                        {!isLoadingUserPresets && displayPresets.filter(p => p.name && p.name.trim() !== "").length === 0 && (
                                           <p className="p-2 text-sm text-muted-foreground">Aucun préréglage.</p>
                                         )}
-                                        {!isLoadingUserPresets && displayPresets.map(p => (
+                                        {!isLoadingUserPresets && displayPresets.filter(p => p.name && p.name.trim() !== "").map(p => (
                                           <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
                                         ))}
                                       </SelectContent>
@@ -576,10 +649,10 @@ export function ImmersiveReaderTool() {
                                       <Save className="h-4 w-4" />
                                     </Button>
                                   </div>
-                                  {displayPresets.length > 0 && (
+                                  {displayPresets.filter(p => p.name && p.name.trim() !== "").length > 0 && (
                                     <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-1">
                                       <Label className="text-xs text-muted-foreground">Mes Préréglages :</Label>
-                                      {displayPresets.map(p => (
+                                      {displayPresets.filter(p => p.name && p.name.trim() !== "").map(p => (
                                         <div key={p.name} className="flex items-center justify-between text-sm p-1 hover:bg-muted/30 rounded-md">
                                           <span className="truncate cursor-default" title={p.name}>{p.name}</span>
                                           <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => setPresetToDelete(p.name)}>
@@ -650,10 +723,10 @@ export function ImmersiveReaderTool() {
         )}
 
 
-        {(processedText || inputText) && (
+        {(inputText.trim() || processedText.trim()) && (
           <ScrollArea
               className="h-[300px] w-full rounded-md border"
-              style={themeStyles} 
+              style={toolMode === 'genie' ? themeStyles : {}} 
           >
             <div
               className={cn(
@@ -662,25 +735,26 @@ export function ImmersiveReaderTool() {
                 )}
               style={toolMode === 'genie' ? textDisplayStyles : {}} 
             >
-              {toolMode === 'genie' && words.length > 0 ? (
-                words.map((word, index) => {
-                  let wordStartIndex = 0;
-                  for (let k = 0; k < index; k++) { wordStartIndex += words[k].length; }
-
-                  const isCurrentWord = currentWordCharIndex !== -1 &&
-                                        word.trim() !== '' && 
-                                        wordStartIndex <= currentWordCharIndex &&
-                                        currentWordCharIndex < wordStartIndex + word.length;
+              {toolMode === 'genie' && parsedTextElements.length > 0 ? (
+                parsedTextElements.map((element, index) => {
+                  const isCurrentWord = currentSpokenWordInfo !== null &&
+                                        element.type === 'word' &&
+                                        element.originalStartIndex === currentSpokenWordInfo.originalStartIndex;
+                  
+                  const isInCurrentSentenceGroup = displaySettings.enableSentenceHighlighting &&
+                                                currentSpokenWordInfo !== null &&
+                                                element.sentenceGroupIndex === currentSpokenWordInfo.sentenceGroupIndex;
                   return (
                     <span
                       key={index}
                       ref={el => { wordRefs.current[index] = el; }}
                       className={cn(
-                          word.trim() === '' ? '' : 'transition-colors duration-100',
-                          isCurrentWord ? "bg-primary/50 dark:bg-primary/60 rounded px-0.5" : ""
+                          "transition-colors duration-150 ease-in-out", // For smoother word transitions
+                          isCurrentWord ? "bg-primary/50 text-primary-foreground rounded px-0.5" 
+                                        : isInCurrentSentenceGroup ? "bg-primary/20 rounded" : ""
                       )}
                     >
-                      {word}
+                      {element.text}
                     </span>
                   );
                 })

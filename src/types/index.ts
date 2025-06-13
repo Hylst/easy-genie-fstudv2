@@ -204,8 +204,9 @@ export interface ImmersiveReaderSettings {
   lineHeight: number; 
   letterSpacing: number; 
   wordSpacing: number; 
-  theme: 'light' | 'dark' | 'sepia'; // Removed custom object theme for simplicity with presets
-  focusMode: 'none' | 'line' | 'paragraph'; // Future enhancement
+  theme: 'light' | 'dark' | 'sepia'; 
+  focusMode: 'none' | 'line' | 'paragraph'; 
+  enableSentenceHighlighting: boolean;
 }
 
 export interface ImmersiveReaderDisplayPreset {
