@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
-import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, Save, BookOpenCheck, Eraser, BookmarkPlus, Info, BrainCircuit } from 'lucide-react';
+import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, Save, BookOpenCheck, Eraser, BookmarkPlus, Info, BrainCircuit, Sparkles } from 'lucide-react'; // Added Sparkles
 import { useToast } from "@/hooks/use-toast";
 import { breakdownTask } from '@/ai/flows/breakdown-task-flow';
 import type { UITaskBreakerTask, TaskBreakerCustomPreset, CreateTaskBreakerCustomPresetDTO, TaskBreakerSavedBreakdown, CreateTaskBreakerSavedBreakdownDTO, CreateTaskBreakerTaskDTO, TaskSuggestionPreset, PreDecomposedTaskPreset, PreDecomposedTaskSubTask } from '@/types';
@@ -45,6 +45,8 @@ import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from '@/contexts/AuthContext';
+import { Switch } from '@/components/ui/switch'; // Added Switch
+import { Progress } from '@/components/ui/progress'; // Added Progress
 import {
   getAllTaskBreakerTasks,
   addTaskBreakerTask,
@@ -60,7 +62,9 @@ import {
 
 
 const TASK_BREAKER_EXPANDED_STATE_KEY = "easyGenieTaskBreakerExpandedState_v1";
+const TASK_BREAKER_MODE_KEY = "easyGenieTaskBreakerMode_v1"; // Key for tool mode
 
+// ... (systemTaskSuggestions and preDecomposedTaskPresets remain unchanged)
 const systemTaskSuggestions: TaskSuggestionPreset[] = [
   // Personnel & Bien-être
   { id: 'sugg_pers_1', name: "Planifier des vacances relaxantes", taskText: "Planifier des vacances relaxantes et ressourçantes", category: "Personnel & Bien-être" },
@@ -548,6 +552,7 @@ const preDecomposedTaskPresets: PreDecomposedTaskPreset[] = [
     ]},
 ];
 
+
 interface FetchTaskDataOptions {
   newContextToSet?: string;
   preserveActiveState?: boolean; 
@@ -574,6 +579,7 @@ const mapDbTasksToUiTasks = (dbTasks: TaskBreakerTask[], currentExpandedStates: 
 
 export function TaskBreakerTool() {
   const [intensity, setIntensity] = useState<number>(3);
+  const [toolMode, setToolMode] = useState<'magique' | 'genie'>('magique'); // New state for tool mode
   const [mainTaskInput, setMainTaskInput] = useState<string>('');
   const mainTaskTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -616,6 +622,22 @@ export function TaskBreakerTool() {
   const currentMainTaskContextRef = useRef(currentMainTaskContext);
   useEffect(() => { currentMainTaskContextRef.current = currentMainTaskContext; }, [currentMainTaskContext]);
   
+  // Load and save toolMode
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedMode = localStorage.getItem(TASK_BREAKER_MODE_KEY) as 'magique' | 'genie';
+      if (savedMode) {
+        setToolMode(savedMode);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(TASK_BREAKER_MODE_KEY, toolMode);
+    }
+  }, [toolMode]);
+
 
   const fetchTaskData = useCallback(async (options: FetchTaskDataOptions = {}) => {
     const { newContextToSet, preserveActiveState = false } = options;
@@ -673,7 +695,7 @@ export function TaskBreakerTool() {
       toast({ title: "Erreur de chargement", description: (error as Error).message, variant: "destructive" });
     } 
     finally { setIsLoadingData(false); }
-  }, [user, toast, isOnline]); // Removed expandedStates from here to break potential loops
+  }, [user, toast, isOnline]); 
 
   useEffect(() => {
     fetchTaskData();
@@ -1063,7 +1085,6 @@ export function TaskBreakerTool() {
         setAllUiTasksFlat(prev => [...prev.filter(t => t.main_task_text_context !== newMainTaskContext), ...loadedTasks.flatMap(t => [t, ...t.subTasks])]);
         setCurrentMainTaskContext(newMainTaskContext);
         setMainTaskInput(newMainTaskContext);
-        // await fetchTaskData({ newContextToSet: newMainTaskContext }); // This might be redundant or cause issues if allUiTasksFlat is already set
         
         setShowHistoryDialog(false);
         toast({ title: "Chargé depuis l'historique!", description: `"${entry.name}" est prêt.` });
@@ -1113,10 +1134,9 @@ export function TaskBreakerTool() {
 
         setExpandedStates(prev => ({ ...prev, ...newExpandedStatesForLoad }));
 
-        // Manually update allUiTasksFlat to include all newly added tasks (flat)
         const flattenTasks = (tasks: UITaskBreakerTask[]): UITaskBreakerTask[] => {
             return tasks.reduce((acc, task) => {
-                acc.push({...task, subTasks: []}); // Add task without its subTasks in flat list
+                acc.push({...task, subTasks: []}); 
                 if (task.subTasks && task.subTasks.length > 0) {
                     acc.push(...flattenTasks(task.subTasks));
                 }
@@ -1129,7 +1149,6 @@ export function TaskBreakerTool() {
 
         setCurrentMainTaskContext(newMainTaskContext);
         setMainTaskInput(newMainTaskContext); 
-        // The useEffect for taskTree will rebuild it based on the new allUiTasksFlat and currentMainTaskContext
         
         setShowDecomposedPresetDialog(false);
         toast({ title: "Tâche décomposée chargée!", description: `Modèle "${preset.name}" appliqué.` });
@@ -1137,7 +1156,7 @@ export function TaskBreakerTool() {
     } catch (error) {
         console.error("Error loading decomposed preset:", error);
         toast({ title: "Erreur chargement modèle", description: (error as Error).message, variant: "destructive" });
-         await fetchTaskData(); // Re-fetch all data on error
+         await fetchTaskData(); 
     } finally {
         setIsSubmitting(false);
     }
@@ -1165,20 +1184,15 @@ export function TaskBreakerTool() {
       setMainTaskInput('');
       setCurrentMainTaskContext(''); 
       setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context !== contextToDelete));
-      // setTaskTree([]); // This will be handled by useEffect dependent on allUiTasksFlat and currentMainTaskContext
       setExpandedStates({}); 
 
       setShowClearTaskDialog(false);
       toast({ title: "Tâche actuelle effacée", variant: "destructive"});
       mainTaskTextareaRef.current?.focus(); 
-      // No need to call fetchTaskData if we manually cleared the local state correctly
-      // await fetchTaskData({ newContextToSet: '' }); // Or this to reload an empty state from potentially other data
-
-
     } catch (error) {
       console.error("Error clearing current task:", error);
       toast({ title: "Erreur d'effacement", description:(error as Error).message, variant: "destructive"});
-      await fetchTaskData(); // Fetch all data on error
+      await fetchTaskData(); 
     } finally {
       setIsSubmitting(false);
     }
@@ -1246,15 +1260,36 @@ export function TaskBreakerTool() {
     return acc;
   }, {} as Record<string, PreDecomposedTaskPreset[]>);
 
+  const calculateProgress = useCallback((task: UITaskBreakerTask): { completedLeaves: number, totalLeaves: number } => {
+    let completedLeaves = 0;
+    let totalLeaves = 0;
+
+    const traverse = (currentTask: UITaskBreakerTask) => {
+        const children = allUiTasksFlat.filter(t => t.parent_id === currentTask.id && t.main_task_text_context === currentTask.main_task_text_context);
+        if (children.length === 0) { // Leaf node
+            totalLeaves++;
+            if (currentTask.is_completed) {
+                completedLeaves++;
+            }
+        } else {
+            children.forEach(child => traverse(child));
+        }
+    };
+    traverse(task);
+    return { completedLeaves, totalLeaves };
+  }, [allUiTasksFlat]);
 
   const RenderTaskNode: React.FC<{ task: UITaskBreakerTask }> = React.memo(({ task }) => {
     const isCurrentlyLoadingAI = isLoadingAI && loadingAITaskId === task.id;
+    const { completedLeaves, totalLeaves } = toolMode === 'genie' ? calculateProgress(task) : { completedLeaves: 0, totalLeaves: 0 };
+    const progressPercentage = totalLeaves > 0 ? (completedLeaves / totalLeaves) * 100 : (task.is_completed ? 100 : 0);
+    const hasChildren = allUiTasksFlat.some(t => t.parent_id === task.id && t.main_task_text_context === task.main_task_text_context);
 
     return (
       <div style={{ marginLeft: `${task.depth * 15}px` }} className="mb-1.5">
-        <div className={`flex items-center gap-1 p-1.5 border rounded-md bg-background hover:bg-muted/50 transition-colors ${task.is_completed ? 'opacity-60' : ''}`}>
+        <div className={`flex items-center gap-1 p-1.5 border rounded-md bg-background hover:bg-muted/50 transition-colors ${task.is_completed && !hasChildren ? 'opacity-60' : ''}`}>
           <TooltipProvider>
-          { (task.subTasks && task.subTasks.length > 0) || allUiTasksFlat.some(t => t.parent_id === task.id && t.main_task_text_context === task.main_task_text_context) || task.isExpanded ? (
+          { (task.subTasks && task.subTasks.length > 0) || hasChildren || task.isExpanded ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={() => toggleSubTaskExpansion(task.id)} className="h-6 w-6 p-0 shrink-0">
@@ -1268,17 +1303,17 @@ export function TaskBreakerTool() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => toggleSubTaskCompletion(task.id)} aria-label={task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée"} className="h-6 w-6 p-0 shrink-0" disabled={isSubmitting || isLoadingAI || !user}>
-                  {task.is_completed ? <CheckSquare className="text-green-500 h-4 w-4" /> : <Square className="text-muted-foreground h-4 w-4" />}
+                <Button variant="ghost" size="icon" onClick={() => toggleSubTaskCompletion(task.id)} aria-label={task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée"} className="h-6 w-6 p-0 shrink-0" disabled={isSubmitting || isLoadingAI || !user || (toolMode === 'genie' && hasChildren) }>
+                  {task.is_completed && (!hasChildren || toolMode === 'magique') ? <CheckSquare className="text-green-500 h-4 w-4" /> : <Square className="text-muted-foreground h-4 w-4" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent><p>{task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée"}</p></TooltipContent>
+              <TooltipContent><p>{(toolMode === 'genie' && hasChildren) ? "Le progrès est basé sur les sous-tâches." : (task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée")}</p></TooltipContent>
             </Tooltip>
           </TooltipProvider>
           <Input
             value={task.text}
             onChange={(e) => handleSubTaskTextChange(task.id, e.target.value)}
-            className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed ? 'line-through text-muted-foreground' : ''} transition-all duration-200 ease-in-out hover:shadow-inner hover:animate-subtle-shake transform hover:scale-[1.005]`}
+            className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed && !hasChildren ? 'line-through text-muted-foreground' : ''} transition-all duration-200 ease-in-out hover:shadow-inner hover:animate-subtle-shake transform hover:scale-[1.005]`}
             disabled={isSubmitting || isLoadingAI || !user}
           />
           <TooltipProvider>
@@ -1318,6 +1353,13 @@ export function TaskBreakerTool() {
           </TooltipProvider>
         </div>
 
+        {toolMode === 'genie' && hasChildren && (
+            <div className="ml-6 mt-1 mb-1 pr-1">
+                <Progress value={progressPercentage} className="h-2 w-full" />
+                <p className="text-xs text-muted-foreground text-right">{completedLeaves}/{totalLeaves} feuilles complétées ({Math.round(progressPercentage)}%)</p>
+            </div>
+        )}
+
         {task.isExpanded && (
         <div style={{ marginLeft: `20px` }} className="mt-1 pl-1 flex gap-2 items-center">
           <Label htmlFor={`add-subtask-${task.id}`} className="sr-only">Ajouter une sous-tâche à {task.text}</Label>
@@ -1355,6 +1397,21 @@ export function TaskBreakerTool() {
   });
   RenderTaskNode.displayName = 'RenderTaskNode';
 
+  const overallProgress = useMemo(() => {
+    if (toolMode !== 'genie' || taskTree.length === 0) {
+      return { completedLeaves: 0, totalLeaves: 0, percentage: 0 };
+    }
+    let totalCompletedLeaves = 0;
+    let totalOverallLeaves = 0;
+    taskTree.forEach(rootTask => {
+      const progress = calculateProgress(rootTask);
+      totalCompletedLeaves += progress.completedLeaves;
+      totalOverallLeaves += progress.totalLeaves;
+    });
+    const percentage = totalOverallLeaves > 0 ? (totalCompletedLeaves / totalOverallLeaves) * 100 : 0;
+    return { completedLeaves: totalCompletedLeaves, totalLeaves: totalOverallLeaves, percentage };
+  }, [toolMode, taskTree, calculateProgress]);
+
 
   return (
     <TooltipProvider>
@@ -1367,8 +1424,31 @@ export function TaskBreakerTool() {
               {user ? (isOnline ? " Vos tâches et modèles sont synchronisés." : " Mode hors ligne, données sauvegardées localement.") : " Connectez-vous pour sauvegarder et synchroniser."}
             </CardDescription>
           </div>
-          <div className="w-full md:w-auto md:min-w-[300px] md:max-w-xs lg:max-w-sm shrink-0">
+          <div className="w-full md:w-auto md:min-w-[300px] md:max-w-xs lg:max-w-sm shrink-0 space-y-2">
             <IntensitySelector value={intensity} onChange={setIntensity} />
+            <div className="flex items-center justify-end space-x-2 p-1 bg-muted/50 rounded-md">
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" onClick={() => setToolMode('magique')} className={toolMode === 'magique' ? 'bg-primary/20' : ''}>
+                            <Sparkles className={`h-5 w-5 ${toolMode === 'magique' ? 'text-primary' : 'text-muted-foreground'}`} />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Mode Magique (Décomposition IA)</p></TooltipContent>
+                </Tooltip>
+                <Switch
+                    checked={toolMode === 'genie'}
+                    onCheckedChange={(checked) => setToolMode(checked ? 'genie' : 'magique')}
+                    aria-label="Changer de mode"
+                />
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                         <Button variant="ghost" size="icon" onClick={() => setToolMode('genie')} className={toolMode === 'genie' ? 'bg-primary/20' : ''}>
+                            <BrainCircuit className={`h-5 w-5 ${toolMode === 'genie' ? 'text-primary' : 'text-muted-foreground'}`} />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Mode Génie (Fonctionnalités Avancées)</p></TooltipContent>
+                </Tooltip>
+            </div>
           </div>
         </CardHeader>
       <CardContent className="space-y-6">
@@ -1435,6 +1515,17 @@ export function TaskBreakerTool() {
                 </Tooltip>
               </TooltipProvider>
             </div>
+            
+            {toolMode === 'genie' && currentMainTaskContext && taskTree.length > 0 && (
+                <div className="mt-3 mb-1">
+                    <Label className="text-sm font-medium text-foreground">Progression Globale: {currentMainTaskContext}</Label>
+                    <Progress value={overallProgress.percentage} className="w-full h-2.5 mt-1" />
+                    <p className="text-xs text-muted-foreground text-right">
+                        {overallProgress.completedLeaves}/{overallProgress.totalLeaves} tâches ultimes complétées ({Math.round(overallProgress.percentage)}%)
+                    </p>
+                </div>
+            )}
+
 
             { (currentMainTaskContext || taskTree.length > 0 || isLoadingData) && (
               <div>
