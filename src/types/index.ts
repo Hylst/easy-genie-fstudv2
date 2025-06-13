@@ -220,9 +220,9 @@ export interface ImmersiveReaderDisplayPreset {
 
 // Types for TimeFocus Tool Ambient Sounds
 export interface AmbientSound {
-  id: string; // e.g., 'nature_sounds', 'white_noise'
-  name: string; // e.g., "Forêt Paisible", "Bruit Blanc Calme"
-  filePath: string; // e.g., '/sounds/ambiance/nature.mp3'
+  id: 'none' | 'whiteNoise' | 'pinkNoise' | 'brownianNoise' | 'rain' | 'waves' | 'drone_50hz' | 'binaural_10hz';
+  name: string;
+  // filePath is no longer needed for synthetically generated sounds
 }
 
 ```
