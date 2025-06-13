@@ -4,15 +4,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText, Sparkles, Brain, ClipboardPaste, Mic } from 'lucide-react';
+import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText, Sparkles, Brain, ClipboardPaste, Mic, Save, Trash2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { simplifyText } from '@/ai/flows/simplify-text-flow';
 import { useAuth } from '@/contexts/AuthContext';
-import type { ImmersiveReaderSettings } from '@/types';
+import type { ImmersiveReaderSettings, ImmersiveReaderDisplayPreset } from '@/types';
 import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
@@ -20,16 +21,34 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogClose,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { Separator } from '../ui/separator';
+
 
 const DEFAULT_SPEECH_RATE_GENIE = 1;
 const IMMERSIVE_READER_SETTINGS_KEY = "easyGenieImmersiveReaderSettings_v1";
 const IMMERSIVE_READER_MODE_KEY = "easyGenieImmersiveReaderMode_v1";
+const DISPLAY_PRESETS_STORAGE_KEY = "easyGenieImmersiveReaderDisplayPresets_v1";
+
+
+const VALID_FONT_FAMILIES: ImmersiveReaderSettings['fontFamily'][] = ['System', 'Sans-Serif', 'Serif', 'OpenDyslexic'];
 
 const defaultDisplaySettings: ImmersiveReaderSettings = {
   fontSize: 18,
@@ -40,8 +59,6 @@ const defaultDisplaySettings: ImmersiveReaderSettings = {
   theme: 'light',
   focusMode: 'none',
 };
-
-const VALID_FONT_FAMILIES: ImmersiveReaderSettings['fontFamily'][] = ['System', 'Sans-Serif', 'Serif', 'OpenDyslexic'];
 
 
 export function ImmersiveReaderTool() {
@@ -65,9 +82,13 @@ export function ImmersiveReaderTool() {
   const [currentWordCharIndex, setCurrentWordCharIndex] = useState<number>(-1);
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
-
   const [isListening, setIsListening] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
+
+  const [displayPresets, setDisplayPresets] = useState<ImmersiveReaderDisplayPreset[]>([]);
+  const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [presetToDelete, setPresetToDelete] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -91,6 +112,12 @@ export function ImmersiveReaderTool() {
       }
       const savedMode = localStorage.getItem(IMMERSIVE_READER_MODE_KEY);
       if (savedMode === 'genie' || savedMode === 'magique') { setToolMode(savedMode as 'magique' | 'genie'); }
+
+      const savedDisplayPresets = localStorage.getItem(DISPLAY_PRESETS_STORAGE_KEY);
+      if (savedDisplayPresets) {
+        try { setDisplayPresets(JSON.parse(savedDisplayPresets)); }
+        catch (e) { console.error("Failed to parse display presets:", e); localStorage.removeItem(DISPLAY_PRESETS_STORAGE_KEY); }
+      }
     }
   }, []);
 
@@ -102,6 +129,13 @@ export function ImmersiveReaderTool() {
     if (typeof window !== 'undefined') { localStorage.setItem(IMMERSIVE_READER_MODE_KEY, toolMode); }
   }, [toolMode]);
 
+  const saveDisplayPresetsToLocalStorage = useCallback((presets: ImmersiveReaderDisplayPreset[]) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(DISPLAY_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+    }
+  }, []);
+
+
   useEffect(() => {
     return () => { if (synthesis && synthesis.speaking) { synthesis.cancel(); } };
   }, [synthesis]);
@@ -112,11 +146,10 @@ export function ImmersiveReaderTool() {
 
   useEffect(() => {
     const textToDisplay = processedText.trim() || inputText.trim();
-    setWords(textToDisplay.split(/(\s+)/).filter(Boolean)); // Keep spaces as separate elements for structure
+    setWords(textToDisplay.split(/(\s+)/).filter(Boolean)); 
     setCurrentWordCharIndex(-1);
     if (synthesis?.speaking) synthesis.cancel();
     setIsSpeaking(false);
-    wordRefs.current = []; 
   }, [inputText, processedText, synthesis]);
 
   useEffect(() => {
@@ -131,7 +164,7 @@ export function ImmersiveReaderTool() {
 
         for (let i = 0; i < words.length; i++) {
             const word = words[i];
-            if (word.trim() !== '') { // Only consider non-whitespace words for target indexing
+            if (word.trim() !== '') { 
                  if (charCount <= currentWordCharIndex && currentWordCharIndex < charCount + word.length) {
                     targetWordIndex = i;
                     break;
@@ -309,12 +342,48 @@ export function ImmersiveReaderTool() {
     }
   };
 
+  const handleSaveDisplayPreset = () => {
+    if (!newPresetName.trim()) {
+      toast({ title: "Nom du préréglage requis", variant: "destructive" });
+      return;
+    }
+    if (displayPresets.some(p => p.name === newPresetName.trim())) {
+      toast({ title: "Nom déjà utilisé", description: "Ce nom de préréglage existe déjà.", variant: "destructive" });
+      return;
+    }
+    const newPreset: ImmersiveReaderDisplayPreset = { name: newPresetName.trim(), settings: displaySettings };
+    const updatedPresets = [...displayPresets, newPreset];
+    setDisplayPresets(updatedPresets);
+    saveDisplayPresetsToLocalStorage(updatedPresets);
+    toast({ title: "Préréglage sauvegardé !", description: `"${newPreset.name}" a été ajouté.` });
+    setNewPresetName('');
+    setShowSavePresetDialog(false);
+  };
+
+  const handleLoadDisplayPreset = (presetName: string) => {
+    const preset = displayPresets.find(p => p.name === presetName);
+    if (preset) {
+      setDisplaySettings(preset.settings);
+      toast({ title: "Préréglage chargé", description: `Les paramètres de "${preset.name}" ont été appliqués.` });
+    }
+  };
+
+  const confirmDeleteDisplayPreset = () => {
+    if (!presetToDelete) return;
+    const updatedPresets = displayPresets.filter(p => p.name !== presetToDelete);
+    setDisplayPresets(updatedPresets);
+    saveDisplayPresetsToLocalStorage(updatedPresets);
+    toast({ title: "Préréglage supprimé", description: `"${presetToDelete}" a été supprimé.`, variant: "destructive" });
+    setPresetToDelete(null);
+  };
+
+
   const textDisplayStyles = toolMode === 'genie' ? {
     fontSize: `${displaySettings.fontSize}px`,
     fontFamily: displaySettings.fontFamily === 'System' ? 'inherit' 
               : displaySettings.fontFamily === 'Sans-Serif' ? 'Arial, Helvetica, sans-serif'
               : displaySettings.fontFamily === 'Serif' ? 'Georgia, "Times New Roman", serif'
-              : `'${displaySettings.fontFamily}'`, // For 'OpenDyslexic'
+              : `'${displaySettings.fontFamily}'`,
     lineHeight: displaySettings.lineHeight,
     letterSpacing: `${displaySettings.letterSpacing}px`,
     wordSpacing: `${displaySettings.wordSpacing}px`,
@@ -418,11 +487,11 @@ export function ImmersiveReaderTool() {
             <>
                 <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
                     <DialogTrigger asChild>
-                        <Button variant="outline" className="w-full" disabled={isSpeaking}><Settings2 className="mr-2 h-4 w-4" />Paramètres d'Affichage</Button>
+                        <Button variant="outline" className="w-full" disabled={isSpeaking}><Settings2 className="mr-2 h-4 w-4" />Paramètres d'Affichage (Mode Génie)</Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[480px]">
+                    <DialogContent className="sm:max-w-md md:max-w-lg">
                         <DialogHeader><DialogTitle>Paramètres d'Affichage (Mode Génie)</DialogTitle></DialogHeader>
-                        <ScrollArea className="max-h-[60vh] overflow-y-auto pr-2 -mr-2 py-4">
+                        <ScrollArea className="max-h-[70vh] overflow-y-auto pr-3 -mr-3 py-4">
                             <div className="grid gap-4">
                                 <div>
                                     <Label htmlFor="fontSize" className="text-sm">Taille de Police: {displaySettings.fontSize}px</Label>
@@ -445,11 +514,11 @@ export function ImmersiveReaderTool() {
                                     <Slider id="lineHeight" min={1.2} max={2.5} step={0.1} value={[displaySettings.lineHeight]} onValueChange={(val) => handleSettingChange('lineHeight', val[0])} />
                                 </div>
                                 <div>
-                                    <Label htmlFor="letterSpacing" className="text-sm">Espacement Lettres: {displaySettings.letterSpacing}px</Label>
+                                    <Label htmlFor="letterSpacing" className="text-sm">Espacement Lettres: {displaySettings.letterSpacing.toFixed(1)}px</Label>
                                     <Slider id="letterSpacing" min={0} max={5} step={0.1} value={[displaySettings.letterSpacing]} onValueChange={(val) => handleSettingChange('letterSpacing', val[0])} />
                                 </div>
                                 <div>
-                                    <Label htmlFor="wordSpacing" className="text-sm">Espacement Mots: {displaySettings.wordSpacing}px</Label>
+                                    <Label htmlFor="wordSpacing" className="text-sm">Espacement Mots: {displaySettings.wordSpacing.toFixed(1)}px</Label>
                                     <Slider id="wordSpacing" min={0} max={10} step={0.5} value={[displaySettings.wordSpacing]} onValueChange={(val) => handleSettingChange('wordSpacing', val[0])} />
                                 </div>
                                 <div>
@@ -463,11 +532,81 @@ export function ImmersiveReaderTool() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+
+                                <Separator className="my-2" />
+
+                                <div className="space-y-2">
+                                  <h4 className="font-medium text-sm">Gestion des Préréglages d'Affichage</h4>
+                                  <div className="flex items-center gap-2">
+                                    <Select onValueChange={handleLoadDisplayPreset} value="">
+                                      <SelectTrigger className="flex-grow"><SelectValue placeholder="Charger un préréglage..." /></SelectTrigger>
+                                      <SelectContent>
+                                        {displayPresets.map(p => (
+                                          <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                                        ))}
+                                        {displayPresets.length === 0 && <SelectItem value="" disabled>Aucun préréglage</SelectItem>}
+                                      </SelectContent>
+                                    </Select>
+                                    <Button onClick={() => setShowSavePresetDialog(true)} size="icon" variant="outline" aria-label="Sauvegarder le préréglage actuel">
+                                      <Save className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                  {displayPresets.length > 0 && (
+                                    <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-1">
+                                      <Label className="text-xs text-muted-foreground">Mes Préréglages :</Label>
+                                      {displayPresets.map(p => (
+                                        <div key={p.name} className="flex items-center justify-between text-sm p-1 hover:bg-muted/30 rounded-md">
+                                          <span className="truncate cursor-default" title={p.name}>{p.name}</span>
+                                          <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => setPresetToDelete(p.name)}>
+                                            <Trash2 className="h-3 w-3 text-destructive" />
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                             </div>
                         </ScrollArea>
                         <DialogFooter><DialogClose asChild><Button type="button">Fermer</Button></DialogClose></DialogFooter>
                     </DialogContent>
                 </Dialog>
+
+                {/* Save Preset Dialog */}
+                <Dialog open={showSavePresetDialog} onOpenChange={setShowSavePresetDialog}>
+                  <DialogContent className="sm:max-w-xs">
+                    <DialogHeader>
+                      <DialogTitle>Sauvegarder le Préréglage</DialogTitle>
+                      <DialogDescription>Donnez un nom à vos paramètres d'affichage actuels.</DialogDescription>
+                    </DialogHeader>
+                    <Input
+                      value={newPresetName}
+                      onChange={(e) => setNewPresetName(e.target.value)}
+                      placeholder="Ex: Confort Lecture Soir"
+                      className="mt-2"
+                    />
+                    <DialogFooter>
+                      <DialogClose asChild><Button variant="outline" onClick={()=>setNewPresetName('')}>Annuler</Button></DialogClose>
+                      <Button onClick={handleSaveDisplayPreset} disabled={!newPresetName.trim()}>Sauvegarder</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Confirm Delete Preset Dialog */}
+                <AlertDialog open={!!presetToDelete} onOpenChange={(open) => !open && setPresetToDelete(null)}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Supprimer le Préréglage ?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Êtes-vous sûr de vouloir supprimer le préréglage "{presetToDelete}" ? Cette action est irréversible.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel onClick={() => setPresetToDelete(null)}>Annuler</AlertDialogCancel>
+                      <AlertDialogAction onClick={confirmDeleteDisplayPreset}>Supprimer</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
 
                 <div>
                     <Label htmlFor="speech-rate-slider-genie" className="text-sm font-medium text-foreground">
@@ -498,7 +637,7 @@ export function ImmersiveReaderTool() {
               <div
                 className={cn(
                     "p-4 text-base leading-relaxed whitespace-pre-wrap max-w-none",
-                    toolMode === 'magique' && "prose dark:prose-invert" 
+                    toolMode === 'magique' && "prose dark:prose-invert"
                   )}
                 style={textDisplayStyles}
               >
@@ -508,9 +647,9 @@ export function ImmersiveReaderTool() {
                     for (let k = 0; k < index; k++) { wordStartIndex += words[k].length; }
 
                     const isCurrentWord = currentWordCharIndex !== -1 &&
+                                          word.trim() !== '' && 
                                           wordStartIndex <= currentWordCharIndex &&
-                                          currentWordCharIndex < wordStartIndex + word.length &&
-                                          word.trim() !== '';
+                                          currentWordCharIndex < wordStartIndex + word.length;
                     return (
                       <span
                         key={index}
@@ -549,3 +688,4 @@ export function ImmersiveReaderTool() {
     </Card>
   );
 }
+
