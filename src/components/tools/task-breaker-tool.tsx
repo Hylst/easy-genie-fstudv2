@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
-import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, Save, BookOpenCheck, Eraser, BookmarkPlus, Info, BrainCircuit, Sparkles, TimerIcon, ClockIcon } from 'lucide-react';
+import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, Save, BookOpenCheck, Eraser, BookmarkPlus, Info, BrainCircuit, Sparkles, TimerIcon, ClockIcon, Edit3 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { breakdownTask, type BreakdownTaskOutput } from '@/ai/flows/breakdown-task-flow';
 import type { UITaskBreakerTask, TaskBreakerCustomPreset, CreateTaskBreakerCustomPresetDTO, TaskBreakerSavedBreakdown, CreateTaskBreakerSavedBreakdownDTO, CreateTaskBreakerTaskDTO, TaskSuggestionPreset, PreDecomposedTaskPreset, PreDecomposedTaskSubTask, TaskBreakerTask } from '@/types';
@@ -577,6 +577,292 @@ const mapDbTasksToUiTasks = (dbTasks: TaskBreakerTask[], currentExpandedStates: 
     }));
 };
 
+interface RenderTaskNodeProps {
+  task: UITaskBreakerTask;
+  toolMode: 'magique' | 'genie';
+  showTimeEstimates: boolean;
+  isLoadingAI: boolean;
+  loadingAITaskId: string | null;
+  isSubmitting: boolean;
+  user: any; // Replace with actual User type from useAuth if available
+  newChildSubTaskText: { [parentId: string]: string };
+  expandedStates: Record<string, boolean>;
+  allUiTasksFlat: UITaskBreakerTask[]; // Pass this for progress calculation context
+
+  // Callbacks
+  onToggleExpansion: (taskId: string) => void;
+  onToggleCompletion: (taskId: string) => void;
+  onDebouncedChange: (taskId: string, field: 'text' | 'estimated_time_minutes', value: string | number | null, debounceRef: React.MutableRefObject<Record<string, NodeJS.Timeout>>, forceSave?: boolean) => void;
+  onGenieBreakdown: (taskText: string, parentId: string | null) => void;
+  onAddManualSubTask: (parentId: string | null) => void;
+  onDeleteSubTask: (taskId: string) => void;
+  setNewChildSubTaskText: React.Dispatch<React.SetStateAction<{ [parentId: string]: string }>>;
+  
+  textDebounceTimeouts: React.MutableRefObject<Record<string, NodeJS.Timeout>>;
+  timeEstimateDebounceTimeouts: React.MutableRefObject<Record<string, NodeJS.Timeout>>;
+  calculateProgress: (task: UITaskBreakerTask) => { completedLeaves: number, totalLeaves: number };
+  formatTime: (totalMinutes: number | null | undefined) => string;
+  calculateTotalEstimatedTime: (taskId: string) => number;
+}
+
+const RenderTaskNodeComponent: React.FC<RenderTaskNodeProps> = ({
+  task, toolMode, showTimeEstimates, isLoadingAI, loadingAITaskId, isSubmitting, user,
+  newChildSubTaskText, expandedStates, allUiTasksFlat,
+  onToggleExpansion, onToggleCompletion, onDebouncedChange, onGenieBreakdown,
+  onAddManualSubTask, onDeleteSubTask, setNewChildSubTaskText,
+  textDebounceTimeouts, timeEstimateDebounceTimeouts,
+  calculateProgress, formatTime, calculateTotalEstimatedTime
+}) => {
+    const textInputRef = useRef<HTMLInputElement>(null);
+    const timeInputRef = useRef<HTMLInputElement>(null);
+    const [isTextFocused, setIsTextFocused] = useState(false);
+    const [isTimeFocused, setIsTimeFocused] = useState(false);
+
+    useEffect(() => {
+        if (textInputRef.current && task.text !== textInputRef.current.value && !isTextFocused) {
+            textInputRef.current.value = task.text;
+        }
+    }, [task.text, isTextFocused]);
+
+    useEffect(() => {
+        if (timeInputRef.current && !isTimeFocused) {
+            const currentVal = task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString();
+            if (currentVal !== timeInputRef.current.value) {
+                timeInputRef.current.value = currentVal;
+            }
+        }
+    }, [task.estimated_time_minutes, isTimeFocused]);
+    
+    const handleLocalTextChange = () => {
+        if (textInputRef.current) {
+            onDebouncedChange(task.id, 'text', textInputRef.current.value, textDebounceTimeouts);
+        }
+    };
+
+    const handleLocalTextBlur = () => {
+        setIsTextFocused(false);
+        if (textInputRef.current) {
+            onDebouncedChange(task.id, 'text', textInputRef.current.value, textDebounceTimeouts, true); // Force save on blur
+        }
+    };
+
+    const handleLocalTimeEstimateChange = () => {
+        if (timeInputRef.current) {
+            const value = timeInputRef.current.value;
+            const numValue = value === '' ? null : parseInt(value, 10);
+            if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
+                onDebouncedChange(task.id, 'estimated_time_minutes', numValue, timeEstimateDebounceTimeouts);
+            }
+        }
+    };
+     const handleLocalTimeEstimateBlur = () => {
+        setIsTimeFocused(false);
+        if (timeInputRef.current) {
+            const value = timeInputRef.current.value;
+            const numValue = value === '' ? null : parseInt(value, 10);
+            if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
+                 onDebouncedChange(task.id, 'estimated_time_minutes', numValue, timeEstimateDebounceTimeouts, true); // Force save
+            }
+        }
+    };
+    
+    const isCurrentlyLoadingAI = isLoadingAI && loadingAITaskId === task.id;
+    const { completedLeaves, totalLeaves } = toolMode === 'genie' ? calculateProgress(task) : { completedLeaves: 0, totalLeaves: 0 };
+    const progressPercentage = totalLeaves > 0 ? (completedLeaves / totalLeaves) * 100 : (task.is_completed ? 100 : 0);
+    const hasChildren = allUiTasksFlat.some(t => t.parent_id === task.id && t.main_task_text_context === task.main_task_text_context);
+    
+    const directEstimateFormatted = (toolMode === 'genie' && showTimeEstimates && task.estimated_time_minutes && task.estimated_time_minutes > 0) ? `Est: ${formatTime(task.estimated_time_minutes)}` : "";
+    const cumulativeEstimate = (toolMode === 'genie' && showTimeEstimates) ? calculateTotalEstimatedTime(task.id) : 0;
+    const cumulativeEstimateFormatted = (cumulativeEstimate > 0 && cumulativeEstimate !== task.estimated_time_minutes) ? ` / \u2211 ${formatTime(cumulativeEstimate)}` : ""; // \u2211 is ∑
+    const displayTimeInfo = (directEstimateFormatted || cumulativeEstimateFormatted) ? ` (${directEstimateFormatted}${cumulativeEstimateFormatted})` : "";
+
+    return (
+      <div style={{ marginLeft: `${task.depth * 15}px` }} className="mb-1.5">
+        <div className={`flex items-center gap-1 p-1.5 border rounded-md bg-background hover:bg-muted/50 ${task.is_completed && !hasChildren ? 'opacity-60' : ''}`}>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => onToggleExpansion(task.id)} className="h-6 w-6 p-0 shrink-0">
+                  {expandedStates[task.id] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>{expandedStates[task.id] ? "Replier" : "Déplier"} cette étape pour voir/ajouter des sous-tâches.</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => onToggleCompletion(task.id)} aria-label={task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée"} className="h-6 w-6 p-0 shrink-0" disabled={isSubmitting || isLoadingAI || !user || (toolMode === 'genie' && hasChildren) }>
+                  {task.is_completed && (!hasChildren || toolMode === 'magique') ? <CheckSquare className="text-green-500 h-4 w-4" /> : <Square className="text-muted-foreground h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>{(toolMode === 'genie' && hasChildren) ? "Le progrès est basé sur les sous-tâches." : (task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée")}</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <Input
+            ref={textInputRef}
+            defaultValue={task.text}
+            onFocus={() => setIsTextFocused(true)}
+            onBlur={handleLocalTextBlur}
+            onChange={handleLocalTextChange}
+            className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed && !hasChildren ? 'line-through text-muted-foreground' : ''}`}
+            disabled={isSubmitting || isLoadingAI || !user}
+            aria-label={`Texte de la tâche ${task.text}`}
+          />
+          {displayTimeInfo && <span className="text-xs text-muted-foreground whitespace-nowrap ml-1">{displayTimeInfo}</span>}
+
+          {toolMode === 'genie' && showTimeEstimates && (
+            <div className="flex items-center gap-1 ml-2 shrink-0">
+                <Input
+                    ref={timeInputRef}
+                    type="number"
+                    min="0"
+                    defaultValue={task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString()}
+                    onFocus={() => setIsTimeFocused(true)}
+                    onBlur={handleLocalTimeEstimateBlur}
+                    onChange={handleLocalTimeEstimateChange}
+                    className="h-6 w-16 text-xs p-1 text-right"
+                    placeholder="min"
+                    disabled={isSubmitting || isLoadingAI || !user}
+                    aria-label={`Estimation en minutes pour ${task.text}`}
+                />
+            </div>
+          )}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => onGenieBreakdown(task.text, task.id)} aria-label="Décomposer cette tâche avec le Génie" disabled={isCurrentlyLoadingAI || isLoadingAI || isSubmitting || !user} className="h-6 w-6 p-0 shrink-0">
+                  {isCurrentlyLoadingAI ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="text-primary h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Le Génie décomposera cette étape spécifique en sous-sous-tâches.</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                 <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" aria-label="Supprimer la sous-tâche" disabled={isSubmitting ||isLoadingAI || !user} className="h-6 w-6 p-0 shrink-0">
+                            <Trash2 className="text-destructive w-4 h-4" />
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader><AlertDialogTitle>Supprimer cette étape ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Êtes-vous sûr de vouloir supprimer "{task.text}" et toutes ses sous-étapes dépendantes ?
+                        </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => onDeleteSubTask(task.id)}>Supprimer</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+              </TooltipTrigger>
+              <TooltipContent><p>Supprime cette étape et toutes ses sous-étapes dépendantes.</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        {toolMode === 'genie' && hasChildren && (
+            <div className="ml-6 mt-1 mb-1 pr-1">
+                <Progress value={progressPercentage} className="h-2 w-full" />
+                <p className="text-xs text-muted-foreground text-right">{completedLeaves}/{totalLeaves} tâches ultimes complétées ({Math.round(progressPercentage)}%)</p>
+            </div>
+        )}
+
+        {expandedStates[task.id] && (
+        <div style={{ marginLeft: `20px` }} className="mt-1 pl-1 flex gap-2 items-center">
+          <Label htmlFor={`add-subtask-${task.id}`} className="sr-only">Ajouter une sous-tâche à {task.text}</Label>
+          <Input
+            id={`add-subtask-${task.id}`}
+            value={newChildSubTaskText[task.id] || ''}
+            onChange={(e) => setNewChildSubTaskText(prev => ({ ...prev, [task.id]: e.target.value }))}
+            placeholder="Ajouter une sous-tâche ici..."
+            className="flex-grow h-8 text-xs"
+            onKeyPress={(e) => { if (e.key === 'Enter' && !isLoadingAI && !isSubmitting) onAddManualSubTask(task.id); }}
+            disabled={isLoadingAI || isSubmitting || !user}
+          />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                  <Button onClick={() => onAddManualSubTask(task.id)} variant="outline" size="sm" disabled={isLoadingAI || isSubmitting || !(newChildSubTaskText[task.id] || '').trim() || !user} className="h-8 text-xs">
+                    <PlusCircle className="mr-1 h-3 w-3" /> Ajouter
+                  </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Ajoute manuellement une sous-tâche à l'étape "{task.text}".</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        )}
+        {expandedStates[task.id] && task.subTasks && task.subTasks.length > 0 && (
+          <div className="mt-2">
+            {task.subTasks.map(childTask => (
+              <MemoizedRenderTaskNode 
+                key={childTask.id} 
+                task={childTask}
+                toolMode={toolMode}
+                showTimeEstimates={showTimeEstimates}
+                isLoadingAI={isLoadingAI}
+                loadingAITaskId={loadingAITaskId}
+                isSubmitting={isSubmitting}
+                user={user}
+                newChildSubTaskText={newChildSubTaskText}
+                expandedStates={expandedStates}
+                allUiTasksFlat={allUiTasksFlat}
+                onToggleExpansion={onToggleExpansion}
+                onToggleCompletion={onToggleCompletion}
+                onDebouncedChange={onDebouncedChange}
+                onGenieBreakdown={onGenieBreakdown}
+                onAddManualSubTask={onAddManualSubTask}
+                onDeleteSubTask={onDeleteSubTask}
+                setNewChildSubTaskText={setNewChildSubTaskText}
+                textDebounceTimeouts={textDebounceTimeouts}
+                timeEstimateDebounceTimeouts={timeEstimateDebounceTimeouts}
+                calculateProgress={calculateProgress}
+                formatTime={formatTime}
+                calculateTotalEstimatedTime={calculateTotalEstimatedTime}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+};
+
+const areEqualTaskNodeProps = (prevProps: RenderTaskNodeProps, nextProps: RenderTaskNodeProps) => {
+    if (prevProps.task.id !== nextProps.task.id ||
+        prevProps.task.text !== nextProps.task.text ||
+        prevProps.task.is_completed !== nextProps.task.is_completed ||
+        prevProps.task.estimated_time_minutes !== nextProps.task.estimated_time_minutes ||
+        prevProps.expandedStates[prevProps.task.id] !== nextProps.expandedStates[nextProps.task.id] || // Check expansion state from centralized map
+        prevProps.task.subTasks.length !== nextProps.task.subTasks.length || // Simple check, could be deeper
+        prevProps.toolMode !== nextProps.toolMode ||
+        prevProps.showTimeEstimates !== nextProps.showTimeEstimates ||
+        prevProps.isLoadingAI !== nextProps.isLoadingAI ||
+        prevProps.loadingAITaskId !== nextProps.loadingAITaskId ||
+        prevProps.isSubmitting !== nextProps.isSubmitting ||
+        prevProps.newChildSubTaskText[prevProps.task.id] !== nextProps.newChildSubTaskText[nextProps.task.id] // Check specific field
+        ) {
+        return false; // Props are not equal, re-render
+    }
+
+    // Check if callback references have changed (they shouldn't if memoized correctly in parent)
+    if (prevProps.onToggleExpansion !== nextProps.onToggleExpansion ||
+        prevProps.onToggleCompletion !== nextProps.onToggleCompletion ||
+        prevProps.onDebouncedChange !== nextProps.onDebouncedChange ||
+        prevProps.onGenieBreakdown !== nextProps.onGenieBreakdown ||
+        prevProps.onAddManualSubTask !== nextProps.onAddManualSubTask ||
+        prevProps.onDeleteSubTask !== nextProps.onDeleteSubTask
+        ) {
+        return false;
+    }
+    return true; // Props are equal, skip re-render
+};
+
+const MemoizedRenderTaskNode = React.memo(RenderTaskNodeComponent, areEqualTaskNodeProps);
+
 
 export function TaskBreakerTool() {
   const [intensity, setIntensity] = useState<number>(3);
@@ -702,7 +988,7 @@ export function TaskBreakerTool() {
       toast({ title: "Erreur de chargement", description: (error as Error).message, variant: "destructive" });
     }
     finally { setIsLoadingData(false); }
-  }, [user, toast, isOnline]); 
+  }, [user, toast, isOnline]); // isOnline added
 
 
   useEffect(() => {
@@ -770,12 +1056,13 @@ export function TaskBreakerTool() {
   };
 
   const handleDebouncedChange = useCallback(async (taskId: string, field: 'text' | 'estimated_time_minutes', value: string | number | null, debounceRef: React.MutableRefObject<Record<string, NodeJS.Timeout>>, forceSave: boolean = false) => {
+    if (!user) return;
+
     if (debounceRef.current[taskId] && !forceSave) {
         clearTimeout(debounceRef.current[taskId]);
     }
 
     const saveFunction = async () => {
-        if (!user) return;
         setIsSubmitting(true);
         try {
             const payload: Partial<CreateTaskBreakerTaskDTO> = { [field]: value };
@@ -783,7 +1070,7 @@ export function TaskBreakerTool() {
             setAllUiTasksFlat(prevFlat =>
                 prevFlat.map(t =>
                     t.id === taskId
-                        ? { ...t, ...updatedDbTask, subTasks: t.subTasks, isExpanded: t.isExpanded } // Preserve UI state
+                        ? { ...t, ...updatedDbTask, subTasks: t.subTasks, isExpanded: expandedStates[t.id] || false }
                         : t
                 )
             );
@@ -802,10 +1089,10 @@ export function TaskBreakerTool() {
     } else {
         debounceRef.current[taskId] = setTimeout(saveFunction, 1200);
     }
-  }, [user, toast, fetchTaskData]);
+  }, [user, toast, fetchTaskData, expandedStates]);
 
 
-  const handleGenieBreakdown = async (taskTextToBreak: string, parentId: string | null) => {
+  const handleGenieBreakdown = useCallback(async (taskTextToBreak: string, parentId: string | null) => {
     if (!user) { toast({ title: "Non connecté", variant: "destructive" }); return; }
     if (!taskTextToBreak.trim()) { toast({ title: "Tâche manquante", variant: "destructive" }); return; }
 
@@ -890,9 +1177,9 @@ export function TaskBreakerTool() {
       setIsLoadingAI(false);
       setLoadingAITaskId(null);
     }
-  };
+  }, [user, intensity, currentMainTaskContext, mainTaskInput, allUiTasksFlat, toast, setCurrentMainTaskContext, setMainTaskInput]);
 
-  const handleAddManualSubTask = async (parentId: string | null) => {
+  const handleAddManualSubTask = useCallback(async (parentId: string | null) => {
     if (!user) { toast({ title: "Non connecté", variant: "destructive" }); return; }
     const text = parentId ? (newChildSubTaskText[parentId] || '').trim() : newDirectSubTaskText.trim();
     if (!text) { toast({ title: "Texte de tâche vide", variant: "destructive" }); return; }
@@ -951,9 +1238,9 @@ export function TaskBreakerTool() {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [user, newChildSubTaskText, newDirectSubTaskText, currentMainTaskContext, mainTaskInput, allUiTasksFlat, toast, setCurrentMainTaskContext]);
 
-  const toggleSubTaskCompletion = async (taskId: string) => {
+  const toggleSubTaskCompletion = useCallback(async (taskId: string) => {
     if (!user) { toast({ title: "Non connecté", variant: "destructive" }); return; }
     const task = allUiTasksFlat.find(t => t.id === taskId);
     if (!task) return;
@@ -961,7 +1248,7 @@ export function TaskBreakerTool() {
     setIsSubmitting(true);
     try {
       const updatedTask = await updateTaskBreakerTask(taskId, { is_completed: !task.is_completed });
-      setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? {...t, ...updatedTask} : t));
+      setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? {...t, ...updatedTask, subTasks: t.subTasks, isExpanded: expandedStates[t.id] || false} : t)); // Preserve subTasks and isExpanded
       toast({ title: task.is_completed ? "Tâche marquée non faite" : "Tâche complétée !" });
     } catch (error) {
       console.error("Error toggling completion:", error);
@@ -970,13 +1257,13 @@ export function TaskBreakerTool() {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [user, allUiTasksFlat, toast, fetchTaskData, expandedStates]);
 
-  const toggleSubTaskExpansion = (taskId: string) => {
+  const toggleSubTaskExpansion = useCallback((taskId: string) => {
     setExpandedStates(prev => ({ ...prev, [taskId]: !prev[taskId] }));
-  };
+  }, []);
 
-  const handleDeleteSubTask = async (taskId: string) => {
+  const handleDeleteSubTask = useCallback(async (taskId: string) => {
     if (!user) { toast({ title: "Non connecté", variant: "destructive" }); return; }
     setIsSubmitting(true);
     try {
@@ -998,7 +1285,7 @@ export function TaskBreakerTool() {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [user, allUiTasksFlat, toast, fetchTaskData]);
 
   const intensityDescription = () => {
     if (intensity <= 2) return "Le Génie suggérera des étapes générales.";
@@ -1171,9 +1458,13 @@ export function TaskBreakerTool() {
                 if (taskToLoad.subTasks && taskToLoad.subTasks.length > 0) {
                     const children = await addAndCollectTasks(taskToLoad.subTasks, addedDbTask.id, depth + 1);
                     newUiTask.subTasks = children;
-                    collected.push(...children.filter(c => !collected.find(coll => coll.id === c.id))); 
+                    // Avoid double-adding children that are already in the flat list by the recursive call
+                    const childIds = new Set(children.map(c => c.id));
+                    collected.push(...children.filter(c => !collected.some(coll => coll.id === c.id && !childIds.has(c.id))));
+
                 }
             }
+            // Ensure uniqueness by ID before returning
             return Array.from(new Map(collected.map(item => [item.id, item])).values());
         };
         
@@ -1243,7 +1534,7 @@ export function TaskBreakerTool() {
                     is_completed: taskToLoad.is_completed || false,
                     depth: depth,
                     order: i,
-                    estimated_time_minutes: null, 
+                    estimated_time_minutes: null, // Presets don't have time estimates currently
                 };
                 const addedDbTask = await addTaskBreakerTask(dto);
                 newExpandedStatesForLoad[addedDbTask.id] = true;
@@ -1253,7 +1544,8 @@ export function TaskBreakerTool() {
                 if (taskToLoad.subTasks && taskToLoad.subTasks.length > 0) {
                     const children = await addAndCollectTasks(taskToLoad.subTasks, addedDbTask.id, depth + 1);
                     newUiTask.subTasks = children;
-                    collected.push(...children.filter(c => !collected.find(coll => coll.id === c.id)));
+                    const childIds = new Set(children.map(c => c.id));
+                    collected.push(...children.filter(c => !collected.some(coll => coll.id === c.id && !childIds.has(c.id))));
                 }
             }
             return Array.from(new Map(collected.map(item => [item.id, item])).values());
@@ -1398,7 +1690,7 @@ export function TaskBreakerTool() {
         }
     } else {
         children.forEach(child => {
-            const childProgress = calculateProgress(child);
+            const childProgress = calculateProgress(child); // Pass the child task itself
             completedLeaves += childProgress.completedLeaves;
             totalLeaves += childProgress.totalLeaves;
         });
@@ -1436,6 +1728,7 @@ export function TaskBreakerTool() {
         sumOfChildren += childTotalTime;
     }
 
+    // If children have estimates, return their sum. Otherwise, return the parent's own estimate (if any).
     if (childrenHaveEstimates) {
         return sumOfChildren;
     } else {
@@ -1443,192 +1736,6 @@ export function TaskBreakerTool() {
     }
   }, [allUiTasksFlat]);
 
-
-  const RenderTaskNode: React.FC<{ task: UITaskBreakerTask }> = React.memo(({ task }) => {
-    const textInputRef = useRef<HTMLInputElement>(null);
-    const timeInputRef = useRef<HTMLInputElement>(null);
-    const [isTextFocused, setIsTextFocused] = useState(false);
-    const [isTimeFocused, setIsTimeFocused] = useState(false);
-
-
-    useEffect(() => {
-        if (textInputRef.current && task.text !== textInputRef.current.value && !isTextFocused) {
-            textInputRef.current.value = task.text;
-        }
-    }, [task.text, isTextFocused]);
-
-    useEffect(() => {
-        if (timeInputRef.current && !isTimeFocused) {
-            const currentVal = task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString();
-            if (currentVal !== timeInputRef.current.value) {
-                timeInputRef.current.value = currentVal;
-            }
-        }
-    }, [task.estimated_time_minutes, isTimeFocused]);
-    
-    const isCurrentlyLoadingAI = isLoadingAI && loadingAITaskId === task.id;
-    const { completedLeaves, totalLeaves } = toolMode === 'genie' ? calculateProgress(task) : { completedLeaves: 0, totalLeaves: 0 };
-    const progressPercentage = totalLeaves > 0 ? (completedLeaves / totalLeaves) * 100 : (task.is_completed ? 100 : 0);
-    const hasChildren = allUiTasksFlat.some(t => t.parent_id === task.id && t.main_task_text_context === task.main_task_text_context);
-    
-    const directEstimateFormatted = (toolMode === 'genie' && showTimeEstimates && task.estimated_time_minutes && task.estimated_time_minutes > 0) ? `Est: ${formatTime(task.estimated_time_minutes)}` : "";
-    const cumulativeEstimate = (toolMode === 'genie' && showTimeEstimates) ? calculateTotalEstimatedTime(task.id) : 0;
-    const cumulativeEstimateFormatted = (cumulativeEstimate > 0 && cumulativeEstimate !== task.estimated_time_minutes) ? ` / ∑ ${formatTime(cumulativeEstimate)}` : "";
-    const displayTimeInfo = (directEstimateFormatted || cumulativeEstimateFormatted) ? ` (${directEstimateFormatted}${cumulativeEstimateFormatted})` : "";
-
-    return (
-      <div style={{ marginLeft: `${task.depth * 15}px` }} className="mb-1.5">
-        <div className={`flex items-center gap-1 p-1.5 border rounded-md bg-background hover:bg-muted/50 transition-colors ${task.is_completed && !hasChildren ? 'opacity-60' : ''}`}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => toggleSubTaskExpansion(task.id)} className="h-6 w-6 p-0 shrink-0">
-                  {task.isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent><p>{task.isExpanded ? "Replier" : "Déplier"} cette étape pour voir/ajouter des sous-tâches.</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => toggleSubTaskCompletion(task.id)} aria-label={task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée"} className="h-6 w-6 p-0 shrink-0" disabled={isSubmitting || isLoadingAI || !user || (toolMode === 'genie' && hasChildren) }>
-                  {task.is_completed && (!hasChildren || toolMode === 'magique') ? <CheckSquare className="text-green-500 h-4 w-4" /> : <Square className="text-muted-foreground h-4 w-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent><p>{(toolMode === 'genie' && hasChildren) ? "Le progrès est basé sur les sous-tâches." : (task.is_completed ? "Marquer comme non terminée" : "Marquer comme terminée")}</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <Input
-            ref={textInputRef}
-            defaultValue={task.text}
-            onFocus={() => setIsTextFocused(true)}
-            onBlur={(e) => { 
-                setIsTextFocused(false); 
-                handleDebouncedChange(task.id, 'text', e.target.value, textDebounceTimeouts, true);
-            }}
-            onChange={() => {
-                if (textInputRef.current) {
-                    handleDebouncedChange(task.id, 'text', textInputRef.current.value, textDebounceTimeouts);
-                }
-            }}
-            className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed && !hasChildren ? 'line-through text-muted-foreground' : ''}`}
-            disabled={isSubmitting || isLoadingAI || !user}
-            aria-label={`Texte de la tâche ${task.text}`}
-          />
-          {displayTimeInfo && <span className="text-xs text-muted-foreground whitespace-nowrap ml-1">{displayTimeInfo}</span>}
-
-          {toolMode === 'genie' && showTimeEstimates && (
-            <div className="flex items-center gap-1 ml-2 shrink-0">
-                <Input
-                    ref={timeInputRef}
-                    type="number"
-                    min="0"
-                    defaultValue={task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString()}
-                    onFocus={() => setIsTimeFocused(true)}
-                    onBlur={(e) => {
-                        setIsTimeFocused(false);
-                        const value = e.target.value;
-                        const numValue = value === '' ? null : parseInt(value, 10);
-                        if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
-                            handleDebouncedChange(task.id, 'estimated_time_minutes', numValue, timeEstimateDebounceTimeouts, true);
-                        }
-                    }}
-                    onChange={() => {
-                        if (timeInputRef.current) {
-                             const value = timeInputRef.current.value;
-                            const numValue = value === '' ? null : parseInt(value, 10);
-                            if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
-                                handleDebouncedChange(task.id, 'estimated_time_minutes', numValue, timeEstimateDebounceTimeouts);
-                            }
-                        }
-                    }}
-                    className="h-6 w-16 text-xs p-1 text-right"
-                    placeholder="min"
-                    disabled={isSubmitting || isLoadingAI || !user}
-                    aria-label={`Estimation en minutes pour ${task.text}`}
-                />
-            </div>
-          )}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => handleGenieBreakdown(task.text, task.id)} aria-label="Décomposer cette tâche avec le Génie" disabled={isCurrentlyLoadingAI || isLoadingAI || isSubmitting || !user} className="h-6 w-6 p-0 shrink-0">
-                  {isCurrentlyLoadingAI ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="text-primary h-4 w-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent><p>Le Génie décomposera cette étape spécifique en sous-sous-tâches.</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                 <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" aria-label="Supprimer la sous-tâche" disabled={isSubmitting ||isLoadingAI || !user} className="h-6 w-6 p-0 shrink-0">
-                            <Trash2 className="text-destructive w-4 h-4" />
-                        </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader><AlertDialogTitle>Supprimer cette étape ?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Êtes-vous sûr de vouloir supprimer "{task.text}" et toutes ses sous-étapes dépendantes ?
-                        </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                        <AlertDialogCancel>Annuler</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDeleteSubTask(task.id)}>Supprimer</AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-              </TooltipTrigger>
-              <TooltipContent><p>Supprime cette étape et toutes ses sous-étapes dépendantes.</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-
-        {toolMode === 'genie' && hasChildren && (
-            <div className="ml-6 mt-1 mb-1 pr-1">
-                <Progress value={progressPercentage} className="h-2 w-full" />
-                <p className="text-xs text-muted-foreground text-right">{completedLeaves}/{totalLeaves} tâches ultimes complétées ({Math.round(progressPercentage)}%)</p>
-            </div>
-        )}
-
-        {task.isExpanded && (
-        <div style={{ marginLeft: `20px` }} className="mt-1 pl-1 flex gap-2 items-center">
-          <Label htmlFor={`add-subtask-${task.id}`} className="sr-only">Ajouter une sous-tâche à {task.text}</Label>
-          <Input
-            id={`add-subtask-${task.id}`}
-            value={newChildSubTaskText[task.id] || ''}
-            onChange={(e) => setNewChildSubTaskText(prev => ({ ...prev, [task.id]: e.target.value }))}
-            placeholder="Ajouter une sous-tâche ici..."
-            className="flex-grow h-8 text-xs"
-            onKeyPress={(e) => { if (e.key === 'Enter' && !isLoadingAI && !isSubmitting) handleAddManualSubTask(task.id); }}
-            disabled={isLoadingAI || isSubmitting || !user}
-          />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                  <Button onClick={() => handleAddManualSubTask(task.id)} variant="outline" size="sm" disabled={isLoadingAI || isSubmitting || !(newChildSubTaskText[task.id] || '').trim() || !user} className="h-8 text-xs">
-                    <PlusCircle className="mr-1 h-3 w-3" /> Ajouter
-                  </Button>
-              </TooltipTrigger>
-              <TooltipContent><p>Ajoute manuellement une sous-tâche à l'étape "{task.text}".</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-        )}
-        {task.isExpanded && task.subTasks && task.subTasks.length > 0 && (
-          <div className="mt-2">
-            {task.subTasks.map(childTask => (
-              <RenderTaskNode key={childTask.id} task={childTask} />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  });
-  RenderTaskNode.displayName = 'RenderTaskNode';
 
   const overallProgress = useMemo(() => {
     if (toolMode !== 'genie' || taskTree.length === 0) {
@@ -1804,7 +1911,31 @@ export function TaskBreakerTool() {
                 {!isLoadingData && taskTree.length > 0 && (
                   <ScrollArea className="max-h-[500px] overflow-y-auto pr-2 rounded-md border p-2 bg-muted/20">
                     {taskTree.map((taskNode) => (
-                      <RenderTaskNode key={taskNode.id} task={taskNode} />
+                       <MemoizedRenderTaskNode
+                        key={taskNode.id}
+                        task={taskNode}
+                        toolMode={toolMode}
+                        showTimeEstimates={showTimeEstimates}
+                        isLoadingAI={isLoadingAI}
+                        loadingAITaskId={loadingAITaskId}
+                        isSubmitting={isSubmitting}
+                        user={user}
+                        newChildSubTaskText={newChildSubTaskText}
+                        expandedStates={expandedStates}
+                        allUiTasksFlat={allUiTasksFlat}
+                        onToggleExpansion={toggleSubTaskExpansion}
+                        onToggleCompletion={toggleSubTaskCompletion}
+                        onDebouncedChange={handleDebouncedChange}
+                        onGenieBreakdown={handleGenieBreakdown}
+                        onAddManualSubTask={handleAddManualSubTask}
+                        onDeleteSubTask={handleDeleteSubTask}
+                        setNewChildSubTaskText={setNewChildSubTaskText}
+                        textDebounceTimeouts={textDebounceTimeouts}
+                        timeEstimateDebounceTimeouts={timeEstimateDebounceTimeouts}
+                        calculateProgress={calculateProgress}
+                        formatTime={formatTime}
+                        calculateTotalEstimatedTime={calculateTotalEstimatedTime}
+                      />
                     ))}
                   </ScrollArea>
                 )}
@@ -2104,3 +2235,6 @@ export function TaskBreakerTool() {
     </TooltipProvider>
   );
 }
+
+
+    
