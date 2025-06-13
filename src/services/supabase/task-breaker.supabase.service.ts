@@ -11,7 +11,6 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
     const { estimated_time_minutes, ...rest } = data;
     const payload: any = { ...rest };
     if (userId) payload.user_id = userId;
-    // Supabase handles integer or null for estimated_time_minutes
     if (estimated_time_minutes !== undefined) {
       payload.estimated_time_minutes = estimated_time_minutes;
     }
@@ -22,7 +21,7 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
     return {
       ...data,
       is_completed: data.is_completed ?? false,
-      estimated_time_minutes: data.estimated_time_minutes, // Will be number or null
+      estimated_time_minutes: data.estimated_time_minutes, 
     } as TaskBreakerTask;
   }
 
@@ -122,8 +121,33 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
       .single();
 
     if (error) {
-      console.error("Error adding TaskBreaker task to Supabase:", error);
-      throw error;
+      let errorMessage = `Error adding TaskBreaker task to Supabase.`;
+      let errorDetailsString = "";
+      if (error && typeof error === 'object') {
+          if ('message' in error && typeof (error as any).message === 'string') {
+              errorMessage = (error as any).message;
+          }
+          if ('details' in error && typeof (error as any).details === 'string') {
+              errorMessage += ` Details: ${(error as any).details}`;
+          }
+          if ('hint' in error && typeof (error as any).hint === 'string') {
+              errorMessage += ` Hint: ${(error as any).hint}`;
+          }
+           if ('code' in error && typeof (error as any).code === 'string') {
+              errorMessage += ` Code: ${(error as any).code}`;
+          }
+          try {
+              errorDetailsString = JSON.stringify(error);
+              console.error("Full Supabase error object (JSON) for add operation:", errorDetailsString);
+          } catch (e) {
+              console.error("Could not stringify the full Supabase error object for add operation.");
+          }
+      }
+      console.error(`Error adding TaskBreaker task to Supabase (summary):`, errorMessage, "Original error object:", error);
+      const customError = new Error(errorMessage);
+      (customError as any).originalError = error;
+      (customError as any).code = (error as any).code;
+      throw customError;
     }
     if (!data) throw new Error("Failed to add TaskBreaker task, no data returned.");
     return this.mapFromSupabase(data);
@@ -153,42 +177,97 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
     });
 
 
-    const { data, error, count } = await supabase
+    const { error: updateOpError, count } = await supabase
       .from(this.tableName)
       .update(taskToUpdateSupabase)
       .eq('id', id)
+      .eq('user_id', userId);
+
+    if (updateOpError) {
+      let errorMessage = `Error during Supabase update operation for TaskBreaker task ${id}.`;
+      let errorDetailsString = "";
+      if (updateOpError && typeof updateOpError === 'object') {
+          if ('message' in updateOpError && typeof (updateOpError as any).message === 'string') {
+              errorMessage = (updateOpError as any).message;
+          }
+          if ('details' in updateOpError && typeof (updateOpError as any).details === 'string') {
+              errorMessage += ` Details: ${(updateOpError as any).details}`;
+          }
+          if ('hint' in updateOpError && typeof (updateOpError as any).hint === 'string') {
+              errorMessage += ` Hint: ${(updateOpError as any).hint}`;
+          }
+          if ('code' in updateOpError && typeof (updateOpError as any).code === 'string') {
+              errorMessage += ` Code: ${(updateOpError as any).code}`;
+          }
+          try {
+              errorDetailsString = JSON.stringify(updateOpError);
+              console.error("Full Supabase error object (JSON) for update operation:", errorDetailsString);
+          } catch (e) {
+              console.error("Could not stringify the full Supabase error object for update operation.");
+          }
+      }
+      console.error(`Error updating TaskBreaker task ${id} in Supabase (summary):`, errorMessage, "Original error object:", updateOpError);
+      const customError = new Error(errorMessage);
+      (customError as any).originalError = updateOpError;
+      (customError as any).code = (updateOpError as any).code;
+      throw customError;
+    }
+
+    if (count === 0) {
+      const notFoundMsg = `Update for TaskBreaker task ${id} (user ${userId}) matched 0 rows. Task may not exist or RLS prevents update.`;
+      console.warn(notFoundMsg);
+      const customError = new Error(notFoundMsg);
+      (customError as any).code = 'PGRST116_ZERO_ROWS_AFFECTED_ON_UPDATE';
+      throw customError;
+    }
+
+    const { data: updatedTaskData, error: selectError } = await supabase
+      .from(this.tableName)
+      .select('*')
+      .eq('id', id)
       .eq('user_id', userId)
-      .select() 
       .single();
 
-
-    if (error) {
-      console.error(`Error updating TaskBreaker task ${id} in Supabase:`, error);
-      if (error.code === 'PGRST116' && count === 0) { 
-        const notFoundMsg = `Update for TaskBreaker task ${id} (user ${userId}) matched 0 rows. Task may not exist or RLS prevents update.`;
-        console.warn(notFoundMsg);
-        const customError = new Error(notFoundMsg);
-        (customError as any).code = 'PGRST116_ZERO_ROWS_AFFECTED_ON_UPDATE'; 
-        throw customError;
+    if (selectError) {
+      let errorMessage = `Error fetching updated TaskBreaker task ${id} after successful update.`;
+      let errorDetailsString = "";
+       if (selectError && typeof selectError === 'object') {
+          if ('message' in selectError && typeof (selectError as any).message === 'string') {
+              errorMessage = (selectError as any).message;
+          }
+          if ('details' in selectError && typeof (selectError as any).details === 'string') {
+              errorMessage += ` Details: ${(selectError as any).details}`;
+          }
+          if ('hint' in selectError && typeof (selectError as any).hint === 'string') {
+              errorMessage += ` Hint: ${(selectError as any).hint}`;
+          }
+           if ('code' in selectError && typeof (selectError as any).code === 'string') {
+              errorMessage += ` Code: ${(selectError as any).code}`;
+          }
+          try {
+              errorDetailsString = JSON.stringify(selectError);
+              console.error("Full Supabase error object (JSON) for select after update:", errorDetailsString);
+          } catch (e) {
+              console.error("Could not stringify the full Supabase error object for select after update.");
+          }
       }
-      throw error;
+      console.error(`${errorMessage} Supabase select error for task ${id}:`, selectError.message, "Original error object:", selectError);
+      const customError = new Error(errorMessage);
+      (customError as any).originalError = selectError;
+      throw customError;
     }
-    if (!data) {
-        const notFoundMsg = `Failed to update TaskBreaker task ${id}, no data returned. Task may not exist, or RLS prevents update. Count: ${count}`;
-        console.warn(notFoundMsg);
-        const customError = new Error(notFoundMsg);
-        (customError as any).code = 'PGRST116_ZERO_ROWS_RETURNED_ON_UPDATE_SUCCESS';
-        throw customError;
+    
+    if (!updatedTaskData) {
+        throw new Error(`Failed to fetch updated TaskBreaker task ${id} after successful update, no data returned, though ${count} rows were reported as updated.`);
     }
-    return this.mapFromSupabase(data);
+
+    return this.mapFromSupabase(updatedTaskData);
   }
 
   async delete(id: string, userId: string): Promise<void> {
     if (!userId) {
       throw new Error("TaskBreakerSupabaseService.delete: userId is required.");
     }
-    // Recursive deletion must be handled by DB (ON DELETE CASCADE) or by client logic calling delete for each child.
-    // This service method will only delete the specified task.
     const { error, count } = await supabase
       .from(this.tableName)
       .delete()
