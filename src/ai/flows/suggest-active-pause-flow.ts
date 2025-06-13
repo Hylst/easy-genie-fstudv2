@@ -44,7 +44,7 @@ Intensity Level Guidance for Pause Suggestions:
 - Level 2 (Modéré): Suggest a slightly more specific, but still easy activity (e.g., "Faites quelques étirements du cou et des épaules.", "Marchez un peu dans la pièce.").
 - Level 3 (Standard): Suggest a common, beneficial activity (e.g., "Prenez 5 minutes pour une courte marche.", "Faites une série de 10 squats légers."). Tailor slightly to duration.
 - Level 4 (Intensif): Suggest a more engaging activity or a couple of short options (e.g., "Essayez une technique de respiration comme la cohérence cardiaque pendant 3 minutes.", "Montez et descendez quelques escaliers.").
-- Level 5 (Maximum): Suggest a more invigorating activity, multiple options, or a mini-routine (e.g., "Faites une courte séance de yoga de 5 min (soleil salutation).", "Buvez de l'eau, étirez vos jambes, et regardez au loin par la fenêtre pendant 2 minutes.").
+- Level 5 (Maximum): Suggest a more invigorating activity, multiple options, ou a mini-routine (e.g., "Faites une courte séance de yoga de 5 min (soleil salutation).", "Buvez de l'eau, étirez vos jambes, et regardez au loin par la fenêtre pendant 2 minutes.").
 
 Break Duration Guidance:
 - For very short breaks (1-3 min): Focus on extremely quick actions (stretching, breathing).
@@ -65,7 +65,7 @@ Output:
 Based on the intensity and break duration, provide your suggestion.
 `,
   config: {
-    temperature: 0.75, 
+    temperature: 0.75,
      safetySettings: [
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -89,5 +89,3 @@ const suggestActivePauseFlow = ai.defineFlow(
     return output;
   }
 );
-
-```
