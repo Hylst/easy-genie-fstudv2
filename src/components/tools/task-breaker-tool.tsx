@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { IntensitySelector } from '@/components/intensity-selector';
-import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, Save, BookOpenCheck, Eraser, BookmarkPlus, Info, BrainCircuit, Sparkles } from 'lucide-react'; // Added Sparkles
+import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, Save, BookOpenCheck, Eraser, BookmarkPlus, Info, BrainCircuit, Sparkles, TimerIcon, ClockIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { breakdownTask } from '@/ai/flows/breakdown-task-flow';
 import type { UITaskBreakerTask, TaskBreakerCustomPreset, CreateTaskBreakerCustomPresetDTO, TaskBreakerSavedBreakdown, CreateTaskBreakerSavedBreakdownDTO, CreateTaskBreakerTaskDTO, TaskSuggestionPreset, PreDecomposedTaskPreset, PreDecomposedTaskSubTask } from '@/types';
@@ -45,8 +45,8 @@ import { Label } from '@/components/ui/label';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from '@/contexts/AuthContext';
-import { Switch } from '@/components/ui/switch'; // Added Switch
-import { Progress } from '@/components/ui/progress'; // Added Progress
+import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
 import {
   getAllTaskBreakerTasks,
   addTaskBreakerTask,
@@ -62,7 +62,9 @@ import {
 
 
 const TASK_BREAKER_EXPANDED_STATE_KEY = "easyGenieTaskBreakerExpandedState_v1";
-const TASK_BREAKER_MODE_KEY = "easyGenieTaskBreakerMode_v1"; // Key for tool mode
+const TASK_BREAKER_MODE_KEY = "easyGenieTaskBreakerMode_v1";
+const TASK_BREAKER_TIME_ESTIMATES_ENABLED_KEY = "easyGenieTaskBreakerTimeEstimatesEnabled_v1";
+
 
 // ... (systemTaskSuggestions and preDecomposedTaskPresets remain unchanged)
 const systemTaskSuggestions: TaskSuggestionPreset[] = [
@@ -572,14 +574,15 @@ const mapDbTasksToUiTasks = (dbTasks: TaskBreakerTask[], currentExpandedStates: 
     return dbTasks.map(dbTask => ({
         ...dbTask,
         isExpanded: currentExpandedStates[dbTask.id] || false,
-        subTasks: []
+        subTasks: [] // Will be populated by buildTree based on current context
     }));
 };
 
 
 export function TaskBreakerTool() {
   const [intensity, setIntensity] = useState<number>(3);
-  const [toolMode, setToolMode] = useState<'magique' | 'genie'>('magique'); // New state for tool mode
+  const [toolMode, setToolMode] = useState<'magique' | 'genie'>('magique');
+  const [showTimeEstimates, setShowTimeEstimates] = useState<boolean>(false);
   const [mainTaskInput, setMainTaskInput] = useState<string>('');
   const mainTaskTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -602,6 +605,8 @@ export function TaskBreakerTool() {
   const { toast } = useToast();
   const { user, isOnline } = useAuth();
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeEstimateDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
 
   const [history, setHistory] = useState<TaskBreakerSavedBreakdown[]>([]);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
@@ -622,21 +627,24 @@ export function TaskBreakerTool() {
   const currentMainTaskContextRef = useRef(currentMainTaskContext);
   useEffect(() => { currentMainTaskContextRef.current = currentMainTaskContext; }, [currentMainTaskContext]);
 
-  // Load and save toolMode
+  // Load and save toolMode and showTimeEstimates
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedMode = localStorage.getItem(TASK_BREAKER_MODE_KEY) as 'magique' | 'genie';
-      if (savedMode) {
-        setToolMode(savedMode);
-      }
+      if (savedMode) setToolMode(savedMode);
+
+      const savedTimeEstimatesEnabled = localStorage.getItem(TASK_BREAKER_TIME_ESTIMATES_ENABLED_KEY);
+      if (savedTimeEstimatesEnabled !== null) setShowTimeEstimates(JSON.parse(savedTimeEstimatesEnabled));
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(TASK_BREAKER_MODE_KEY, toolMode);
-    }
+    if (typeof window !== 'undefined') localStorage.setItem(TASK_BREAKER_MODE_KEY, toolMode);
   }, [toolMode]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') localStorage.setItem(TASK_BREAKER_TIME_ESTIMATES_ENABLED_KEY, JSON.stringify(showTimeEstimates));
+  }, [showTimeEstimates]);
 
 
   const fetchTaskData = useCallback(async (options: FetchTaskDataOptions = {}) => {
@@ -670,8 +678,8 @@ export function TaskBreakerTool() {
 
       if (newContextToSet !== undefined) {
         setCurrentMainTaskContext(newContextToSet);
-        setMainTaskInput(newContextToSet); // Also update mainTaskInput when context is forced
-        setExpandedStates(currentExpandedFromStorage); // Use current if context is forced, or reset/specific logic
+        setMainTaskInput(newContextToSet);
+        setExpandedStates(currentExpandedFromStorage);
       } else if (!preserveActiveState) {
         const latestContextTask = dbTasks
           .filter(t => !t.parent_id && t.main_task_text_context)
@@ -680,13 +688,13 @@ export function TaskBreakerTool() {
         const contextToLoad = latestContextTask ? latestContextTask.main_task_text_context || '' : '';
         setCurrentMainTaskContext(contextToLoad);
 
-        if (!mainTaskInputRef.current && contextToLoad) { // Only set mainTaskInput if it's currently empty to avoid overwriting user input or loaded suggestions
+        if (!mainTaskInputRef.current && contextToLoad) {
           setMainTaskInput(contextToLoad);
         } else if (!mainTaskInputRef.current && !contextToLoad){
            setMainTaskInput('');
         }
         setExpandedStates(currentExpandedFromStorage);
-      } else { // preserveActiveState is true
+      } else {
         setExpandedStates(currentExpandedFromStorage);
       }
 
@@ -737,7 +745,10 @@ export function TaskBreakerTool() {
       recognitionRef.current.onerror = (event: any) => toast({ title: "Erreur de reconnaissance vocale", description: event.error, variant: "destructive" });
       recognitionRef.current.onend = () => setIsListening(false);
     } else console.warn("Speech Recognition API not supported.");
-    return () => { if (recognitionRef.current) recognitionRef.current.stop(); };
+    return () => {
+      if (recognitionRef.current) recognitionRef.current.stop();
+      if (timeEstimateDebounceRef.current) clearTimeout(timeEstimateDebounceRef.current);
+    };
   }, [toast]);
 
   useEffect(() => {
@@ -782,6 +793,36 @@ export function TaskBreakerTool() {
     handleDebouncedTaskTextChange(taskId, newText);
   };
 
+  const handleDebouncedTimeEstimateChange = useCallback(async (taskId: string, newTime: number | null) => {
+    if (timeEstimateDebounceRef.current) clearTimeout(timeEstimateDebounceRef.current);
+    timeEstimateDebounceRef.current = setTimeout(async () => {
+      if (!user) return;
+      setIsSubmitting(true);
+      try {
+        await updateTaskBreakerTask(taskId, { estimated_time_minutes: newTime });
+        setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? {...t, estimated_time_minutes: newTime, updated_at: new Date().toISOString()} : t));
+        toast({ title: "Estimation de temps sauvegardée" });
+      } catch (error) {
+        console.error("Error saving time estimate:", error);
+        toast({ title: "Erreur de sauvegarde (temps)", description: (error as Error).message, variant: "destructive"});
+        await fetchTaskData({ preserveActiveState: true });
+      } finally {
+        setIsSubmitting(false);
+      }
+    }, 1500);
+  }, [user, toast, fetchTaskData]);
+
+  const handleTimeEstimateChange = (taskId: string, value: string) => {
+    const newTime = value === '' ? null : parseInt(value, 10);
+    if (value === '' || (!isNaN(newTime!) && newTime! >= 0)) {
+        setAllUiTasksFlat(prevFlat => prevFlat.map(node =>
+            node.id === taskId ? { ...node, estimated_time_minutes: newTime } : node
+        ));
+        handleDebouncedTimeEstimateChange(taskId, newTime);
+    }
+  };
+
+
   const handleGenieBreakdown = async (taskTextToBreak: string, parentId: string | null) => {
     if (!user) { toast({ title: "Non connecté", variant: "destructive" }); return; }
     if (!taskTextToBreak.trim()) { toast({ title: "Tâche manquante", variant: "destructive" }); return; }
@@ -790,31 +831,32 @@ export function TaskBreakerTool() {
     setLoadingAITaskId(parentId);
 
     let contextForNewTasks = currentMainTaskContextRef.current;
-    if (!parentId) { // Breaking down the main task
+    if (!parentId) {
       if (!mainTaskInputRef.current.trim()) {
         toast({ title: "Tâche principale vide", variant: "destructive" });
         setIsLoadingAI(false); setLoadingAITaskId(null); return;
       }
       contextForNewTasks = mainTaskInputRef.current;
-      // If the input field has changed from the current active context, set it as the new active context
       if (currentMainTaskContextRef.current !== mainTaskInputRef.current) {
           setCurrentMainTaskContext(mainTaskInputRef.current);
-          // Also, clear any existing subtasks for the new context, as we are generating new ones
           setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context !== mainTaskInputRef.current));
       }
-    } else { // Breaking down a sub-task
+    } else {
       const parentTask = allUiTasksFlat.find(t => t.id === parentId);
       if (!parentTask || !parentTask.main_task_text_context) {
         toast({ title: "Erreur de contexte parent", variant: "destructive" });
         setIsLoadingAI(false); setLoadingAITaskId(null); return;
       }
       contextForNewTasks = parentTask.main_task_text_context;
-       // Clear existing subtasks for this parent if we are re-breaking it down
        setAllUiTasksFlat(prev => prev.filter(t => !(t.parent_id === parentId && t.main_task_text_context === contextForNewTasks)));
     }
 
     try {
       const result = await breakdownTask({ mainTaskText: taskTextToBreak, intensityLevel: intensity });
+      if (result.error) {
+          toast({ title: "Erreur du Génie IA", description: "Le service de décomposition est temporairement indisponible. Veuillez réessayer plus tard.", variant: "destructive", duration: 7000 });
+          setIsLoadingAI(false); setLoadingAITaskId(null); return;
+      }
       const parentTask = parentId ? allUiTasksFlat.find(t => t.id === parentId) : null;
       const currentDepth = parentTask ? parentTask.depth + 1 : 0;
 
@@ -825,7 +867,7 @@ export function TaskBreakerTool() {
       for (const [index, text] of result.suggestedSubTasks.entries()) {
           const taskDto: CreateTaskBreakerTaskDTO = {
             text, parent_id: parentId, main_task_text_context: contextForNewTasks,
-            is_completed: false, depth: currentDepth, order: orderOffset + index,
+            is_completed: false, depth: currentDepth, order: orderOffset + index, estimated_time_minutes: null,
           };
           const addedTask = await addTaskBreakerTask(taskDto);
           addedTasksFromAI.push({ ...addedTask, subTasks: [], isExpanded: false });
@@ -882,7 +924,7 @@ export function TaskBreakerTool() {
 
       const taskDto: CreateTaskBreakerTaskDTO = {
         text, parent_id: parentId, main_task_text_context: contextForNewTask,
-        is_completed: false, depth, order,
+        is_completed: false, depth, order, estimated_time_minutes: null,
       };
       const addedTask = await addTaskBreakerTask(taskDto);
       setAllUiTasksFlat(prev => [...prev, {...addedTask, subTasks: [], isExpanded: false}]);
@@ -953,14 +995,20 @@ export function TaskBreakerTool() {
       const indentChar = format === 'md' ? '  ' : '  ';
       const prefix = format === 'md' ? (node.is_completed ? '- [x] ' : '- [ ] ') : (node.is_completed ? '[x] ' : '[ ] ');
       const indentation = indentChar.repeat(node.depth * 2);
-      output += `${indentation}${prefix}${node.text}\n`;
-      if (node.subTasks && node.subTasks.length > 0) {
-        node.subTasks.forEach(child => generateNodeText(child));
+      let timeText = '';
+      if (showTimeEstimates && node.estimated_time_minutes && node.estimated_time_minutes > 0) {
+        timeText = ` (Est: ${formatTime(node.estimated_time_minutes)})`;
+      }
+      output += `${indentation}${prefix}${node.text}${timeText}\n`;
+      const children = allUiTasksFlat.filter(t => t.parent_id === node.id && t.main_task_text_context === node.main_task_text_context).sort((a, b) => a.order - b.order);
+      if (children.length > 0) {
+        children.forEach(child => generateNodeText(child));
       }
     };
     tasksToExport.forEach(task => generateNodeText(task));
     return output;
   };
+
 
   const handleExport = (format: 'txt' | 'md' | 'email') => {
     const mainTaskToExport = currentMainTaskContextRef.current;
@@ -1022,11 +1070,26 @@ export function TaskBreakerTool() {
     }
     setIsSubmitting(true);
     const contextToSave = currentMainTaskContextRef.current;
+    // Create a serializable version of the task tree including estimates
+    const serializeTree = (nodes: UITaskBreakerTask[]): any[] => {
+        return nodes.map(node => ({
+            id: node.id, // Keep ID for potential future rehydration if needed, though not strictly used by current load
+            text: node.text,
+            is_completed: node.is_completed,
+            estimated_time_minutes: node.estimated_time_minutes,
+            order: node.order, // Save order
+            depth: node.depth, // Save depth
+            parent_id: node.parent_id, // Save parent_id
+            subTasks: node.subTasks ? serializeTree(node.subTasks) : []
+        }));
+    };
+    const tasksToSave = serializeTree(taskTree);
+
     try {
         const dto: CreateTaskBreakerSavedBreakdownDTO = {
             name: currentBreakdownName,
             main_task_text: contextToSave,
-            sub_tasks_json: JSON.stringify(taskTree),
+            sub_tasks_json: JSON.stringify(tasksToSave),
             intensity_on_save: intensity,
         };
         await addTaskBreakerSavedBreakdown(dto);
@@ -1053,19 +1116,21 @@ export function TaskBreakerTool() {
         is_completed: (taskItem as UITaskBreakerTask).is_completed || false,
         depth: currentDepth,
         order: i,
+        estimated_time_minutes: (taskItem as UITaskBreakerTask).estimated_time_minutes ?? null,
       };
       const addedDbTask = await addTaskBreakerTask(taskDto);
-      addedTasksBatch.push({ ...addedDbTask, subTasks: [], isExpanded: true });
+      const newUiTask = { ...addedDbTask, subTasks: [], isExpanded: true };
+      addedTasksBatch.push(newUiTask);
       accumulatedNewExpandedStates[addedDbTask.id] = true;
 
       const subTasksToLoadNext = (taskItem as PreDecomposedTaskSubTask).subTasks || (taskItem as UITaskBreakerTask).subTasks;
       if (subTasksToLoadNext && subTasksToLoadNext.length > 0) {
         const childTasks = await addTasksRecursively(subTasksToLoadNext, addedDbTask.id, currentDepth + 1, targetContext, accumulatedNewExpandedStates);
         const currentAdded = addedTasksBatch.find(t => t.id === addedDbTask.id);
-        if(currentAdded) currentAdded.subTasks = childTasks;
+        if(currentAdded) currentAdded.subTasks = childTasks; // This subTasks here is just for the immediate return, allUiTasksFlat handles the global state
       }
     }
-    return addedTasksBatch;
+    return addedTasksBatch; // Returns the top-level tasks added in this call with their *direct* children for this level.
   };
 
   const handleLoadFromHistory = async (entry: TaskBreakerSavedBreakdown) => {
@@ -1074,15 +1139,44 @@ export function TaskBreakerTool() {
 
     const newMainTaskContext = `${entry.main_task_text} (Historique ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`;
     const newExpandedStatesForLoad: Record<string, boolean> = {};
+    let allLoadedTasksForContext: UITaskBreakerTask[] = [];
 
     try {
         const parsedSubTasks: UITaskBreakerTask[] = JSON.parse(entry.sub_tasks_json || "[]");
-        const loadedTasks = await addTasksRecursively(parsedSubTasks, null, 0, newMainTaskContext, newExpandedStatesForLoad);
+        
+        // Add tasks recursively and collect all of them (including nested) into a flat list for allUiTasksFlat
+        const addAndCollectTasks = async (tasks: UITaskBreakerTask[], parentId: string | null, depth: number): Promise<UITaskBreakerTask[]> => {
+            let collected: UITaskBreakerTask[] = [];
+            for (let i = 0; i < tasks.length; i++) {
+                const taskToLoad = tasks[i];
+                const dto: CreateTaskBreakerTaskDTO = {
+                    text: taskToLoad.text,
+                    parent_id: parentId,
+                    main_task_text_context: newMainTaskContext,
+                    is_completed: taskToLoad.is_completed || false,
+                    depth: depth,
+                    order: i, // Use index as order for loaded tasks
+                    estimated_time_minutes: taskToLoad.estimated_time_minutes ?? null,
+                };
+                const addedDbTask = await addTaskBreakerTask(dto);
+                newExpandedStatesForLoad[addedDbTask.id] = true; // Expand all loaded tasks by default
+                const newUiTask: UITaskBreakerTask = { ...addedDbTask, subTasks: [], isExpanded: true };
+                collected.push(newUiTask);
+
+                if (taskToLoad.subTasks && taskToLoad.subTasks.length > 0) {
+                    const children = await addAndCollectTasks(taskToLoad.subTasks, addedDbTask.id, depth + 1);
+                    collected = collected.concat(children);
+                }
+            }
+            return collected;
+        };
+        
+        allLoadedTasksForContext = await addAndCollectTasks(parsedSubTasks, null, 0);
 
         if (entry.intensity_on_save) setIntensity(entry.intensity_on_save);
 
         setExpandedStates(prev => ({ ...prev, ...newExpandedStatesForLoad }));
-        setAllUiTasksFlat(prev => [...prev.filter(t => t.main_task_text_context !== newMainTaskContext), ...loadedTasks.flatMap(t => [t, ...t.subTasks])]);
+        setAllUiTasksFlat(prev => [...prev.filter(t => t.main_task_text_context !== newMainTaskContext), ...allLoadedTasksForContext]);
         setCurrentMainTaskContext(newMainTaskContext);
         setMainTaskInput(newMainTaskContext);
 
@@ -1091,7 +1185,7 @@ export function TaskBreakerTool() {
     } catch (error) {
         console.error("Error loading from history:", error);
         toast({ title: "Erreur de chargement historique", description: (error as Error).message, variant: "destructive" });
-        await fetchTaskData(); // Re-fetch all data on error
+        await fetchTaskData();
     } finally {
         setIsSubmitting(false);
     }
@@ -1114,7 +1208,8 @@ export function TaskBreakerTool() {
 
   const handleLoadTaskSuggestion = (preset: TaskSuggestionPreset) => {
     setMainTaskInput(preset.taskText);
-    setCurrentMainTaskContext('');
+    setCurrentMainTaskContext(''); // Clear current context to indicate it's a new setup
+    setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context === '')); // Keep only unassigned tasks if any
     setTaskTree([]);
     setExpandedStates({});
     mainTaskTextareaRef.current?.focus();
@@ -1128,25 +1223,39 @@ export function TaskBreakerTool() {
 
     const newMainTaskContext = `${preset.mainTaskText} (Modèle ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})`;
     const newExpandedStatesForLoad: Record<string, boolean> = {};
+    let allLoadedTasksForContext: UITaskBreakerTask[] = [];
 
     try {
-        const loadedTasks = await addTasksRecursively(preset.subTasks, null, 0, newMainTaskContext, newExpandedStatesForLoad);
+        const addAndCollectTasks = async (tasks: PreDecomposedTaskSubTask[], parentId: string | null, depth: number): Promise<UITaskBreakerTask[]> => {
+            let collected: UITaskBreakerTask[] = [];
+            for (let i = 0; i < tasks.length; i++) {
+                const taskToLoad = tasks[i];
+                const dto: CreateTaskBreakerTaskDTO = {
+                    text: taskToLoad.text,
+                    parent_id: parentId,
+                    main_task_text_context: newMainTaskContext,
+                    is_completed: taskToLoad.is_completed || false,
+                    depth: depth,
+                    order: i,
+                    estimated_time_minutes: null, // Default to null for presets
+                };
+                const addedDbTask = await addTaskBreakerTask(dto);
+                newExpandedStatesForLoad[addedDbTask.id] = true;
+                const newUiTask: UITaskBreakerTask = { ...addedDbTask, subTasks: [], isExpanded: true };
+                collected.push(newUiTask);
+
+                if (taskToLoad.subTasks && taskToLoad.subTasks.length > 0) {
+                    const children = await addAndCollectTasks(taskToLoad.subTasks, addedDbTask.id, depth + 1);
+                    collected = collected.concat(children);
+                }
+            }
+            return collected;
+        };
+        
+        allLoadedTasksForContext = await addAndCollectTasks(preset.subTasks, null, 0);
 
         setExpandedStates(prev => ({ ...prev, ...newExpandedStatesForLoad }));
-
-        const flattenTasks = (tasks: UITaskBreakerTask[]): UITaskBreakerTask[] => {
-            return tasks.reduce((acc, task) => {
-                acc.push({...task, subTasks: []});
-                if (task.subTasks && task.subTasks.length > 0) {
-                    acc.push(...flattenTasks(task.subTasks));
-                }
-                return acc;
-            }, [] as UITaskBreakerTask[]);
-        };
-        const flatLoadedTasks = flattenTasks(loadedTasks);
-
-        setAllUiTasksFlat(prev => [...prev.filter(t => t.main_task_text_context !== newMainTaskContext), ...flatLoadedTasks]);
-
+        setAllUiTasksFlat(prev => [...prev.filter(t => t.main_task_text_context !== newMainTaskContext), ...allLoadedTasksForContext]);
         setCurrentMainTaskContext(newMainTaskContext);
         setMainTaskInput(newMainTaskContext);
 
@@ -1263,20 +1372,48 @@ export function TaskBreakerTool() {
   const calculateProgress = useCallback((task: UITaskBreakerTask): { completedLeaves: number, totalLeaves: number } => {
     let completedLeaves = 0;
     let totalLeaves = 0;
+    const children = allUiTasksFlat.filter(t => t.parent_id === task.id && t.main_task_text_context === task.main_task_text_context);
 
-    const traverse = (currentTask: UITaskBreakerTask) => {
-        const children = allUiTasksFlat.filter(t => t.parent_id === currentTask.id && t.main_task_text_context === currentTask.main_task_text_context);
-        if (children.length === 0) { // Leaf node
-            totalLeaves++;
-            if (currentTask.is_completed) {
-                completedLeaves++;
-            }
-        } else {
-            children.forEach(child => traverse(child));
+    if (children.length === 0) { // Leaf node
+        totalLeaves = 1;
+        if (task.is_completed) {
+            completedLeaves = 1;
         }
-    };
-    traverse(task);
+    } else {
+        children.forEach(child => {
+            const childProgress = calculateProgress(child);
+            completedLeaves += childProgress.completedLeaves;
+            totalLeaves += childProgress.totalLeaves;
+        });
+    }
     return { completedLeaves, totalLeaves };
+  }, [allUiTasksFlat]);
+
+  const formatTime = (totalMinutes: number | null | undefined): string => {
+    if (totalMinutes === null || totalMinutes === undefined || totalMinutes <= 0) return '';
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    let result = '';
+    if (hours > 0) result += `${hours}h `;
+    if (minutes > 0) result += `${minutes}m`;
+    return result.trim();
+  };
+
+  const calculateTotalEstimatedTime = useCallback((taskId: string): number => {
+    const task = allUiTasksFlat.find(t => t.id === taskId);
+    if (!task) return 0;
+
+    const children = allUiTasksFlat.filter(t => t.parent_id === taskId && t.main_task_text_context === task.main_task_text_context);
+
+    if (children.length === 0) {
+        return task.estimated_time_minutes || 0;
+    }
+
+    let total = 0;
+    children.forEach(child => {
+        total += calculateTotalEstimatedTime(child.id);
+    });
+    return total;
   }, [allUiTasksFlat]);
 
   const RenderTaskNode: React.FC<{ task: UITaskBreakerTask }> = React.memo(({ task }) => {
@@ -1284,6 +1421,8 @@ export function TaskBreakerTool() {
     const { completedLeaves, totalLeaves } = toolMode === 'genie' ? calculateProgress(task) : { completedLeaves: 0, totalLeaves: 0 };
     const progressPercentage = totalLeaves > 0 ? (completedLeaves / totalLeaves) * 100 : (task.is_completed ? 100 : 0);
     const hasChildren = allUiTasksFlat.some(t => t.parent_id === task.id && t.main_task_text_context === task.main_task_text_context);
+    const totalSubTaskTime = (toolMode === 'genie' && showTimeEstimates) ? calculateTotalEstimatedTime(task.id) : 0;
+
 
     return (
       <div style={{ marginLeft: `${task.depth * 15}px` }} className="mb-1.5">
@@ -1316,6 +1455,24 @@ export function TaskBreakerTool() {
             className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed && !hasChildren ? 'line-through text-muted-foreground' : ''} transition-all duration-200 ease-in-out hover:shadow-inner hover:animate-subtle-shake transform hover:scale-[1.005]`}
             disabled={isSubmitting || isLoadingAI || !user}
           />
+          {toolMode === 'genie' && showTimeEstimates && (
+            <div className="flex items-center gap-1 ml-2 shrink-0">
+                <Input
+                    type="number"
+                    min="0"
+                    value={task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString()}
+                    onChange={(e) => handleTimeEstimateChange(task.id, e.target.value)}
+                    className="h-6 w-16 text-xs p-1 text-right"
+                    placeholder="min"
+                    disabled={isSubmitting || isLoadingAI || !user}
+                />
+                {totalSubTaskTime > 0 && (
+                     <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        (∑ {formatTime(totalSubTaskTime)})
+                     </span>
+                )}
+            </div>
+          )}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1412,6 +1569,15 @@ export function TaskBreakerTool() {
     return { completedLeaves: totalCompletedLeaves, totalLeaves: totalOverallLeaves, percentage };
   }, [toolMode, taskTree, calculateProgress]);
 
+  const overallEstimatedTime = useMemo(() => {
+    if (toolMode !== 'genie' || !showTimeEstimates || taskTree.length === 0) return 0;
+    let total = 0;
+    taskTree.forEach(rootTask => {
+        total += calculateTotalEstimatedTime(rootTask.id);
+    });
+    return total;
+  }, [toolMode, showTimeEstimates, taskTree, calculateTotalEstimatedTime]);
+
 
   return (
     <TooltipProvider>
@@ -1426,14 +1592,14 @@ export function TaskBreakerTool() {
           </div>
           <div className="w-full md:w-auto md:min-w-[300px] md:max-w-xs lg:max-w-sm shrink-0 space-y-2">
             <IntensitySelector value={intensity} onChange={setIntensity} />
-            <div className="flex items-center justify-end space-x-2 p-1 bg-muted/50 rounded-md">
+            <div className="flex items-center justify-between p-1 bg-muted/50 rounded-md">
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <Button variant="ghost" size="icon" onClick={() => setToolMode('magique')} className={toolMode === 'magique' ? 'bg-primary/20' : ''}>
                             <Sparkles className={`h-5 w-5 ${toolMode === 'magique' ? 'text-primary' : 'text-muted-foreground'}`} />
                         </Button>
                     </TooltipTrigger>
-                    <TooltipContent><p>Mode Magique (Décomposition IA)</p></TooltipContent>
+                    <TooltipContent><p>Mode Magique (Décomposition IA simple)</p></TooltipContent>
                 </Tooltip>
                 <Switch
                     checked={toolMode === 'genie'}
@@ -1446,8 +1612,18 @@ export function TaskBreakerTool() {
                             <BrainCircuit className={`h-5 w-5 ${toolMode === 'genie' ? 'text-primary' : 'text-muted-foreground'}`} />
                         </Button>
                     </TooltipTrigger>
-                    <TooltipContent><p>Mode Génie (Fonctionnalités Avancées)</p></TooltipContent>
+                    <TooltipContent><p>Mode Génie (Fonctionnalités Avancées: Progrès, Estimations)</p></TooltipContent>
                 </Tooltip>
+                {toolMode === 'genie' && (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={() => setShowTimeEstimates(prev => !prev)} className={showTimeEstimates ? 'bg-primary/20' : ''}>
+                                <ClockIcon className={`h-5 w-5 ${showTimeEstimates ? 'text-primary' : 'text-muted-foreground'}`} />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>{showTimeEstimates ? "Masquer" : "Afficher"} les estimations de temps</p></TooltipContent>
+                    </Tooltip>
+                )}
             </div>
           </div>
         </CardHeader>
@@ -1517,12 +1693,15 @@ export function TaskBreakerTool() {
             </div>
 
             {toolMode === 'genie' && currentMainTaskContext && taskTree.length > 0 && (
-                <div className="mt-3 mb-1">
+                <div className="mt-3 mb-1 p-2 border rounded-md bg-muted/30">
                     <Label className="text-sm font-medium text-foreground">Progression Globale: {currentMainTaskContext}</Label>
-                    <Progress value={overallProgress.percentage} className="w-full h-2.5 mt-1" />
-                    <p className="text-xs text-muted-foreground text-right">
-                        {overallProgress.completedLeaves}/{overallProgress.totalLeaves} tâches ultimes complétées ({Math.round(overallProgress.percentage)}%)
-                    </p>
+                    <Progress value={overallProgress.percentage} className="w-full h-2.5 mt-1 mb-0.5" />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{overallProgress.completedLeaves}/{overallProgress.totalLeaves} tâches ultimes complétées ({Math.round(overallProgress.percentage)}%)</span>
+                        {showTimeEstimates && overallEstimatedTime > 0 && (
+                            <span>Temps total estimé: {formatTime(overallEstimatedTime)}</span>
+                        )}
+                    </div>
                 </div>
             )}
 

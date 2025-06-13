@@ -67,6 +67,7 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
       is_completed: data.is_completed ?? false,
       depth: depth,
       order: data.order,
+      estimated_time_minutes: data.estimated_time_minutes ?? null, // Handle new field
       created_at: now,
       updated_at: now,
       sync_status: 'new',
@@ -102,6 +103,7 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
       ...existingTask,
       ...data, // Apply all partial data
       depth: depth, // Calculated or explicitly passed depth
+      estimated_time_minutes: data.estimated_time_minutes !== undefined ? data.estimated_time_minutes : existingTask.estimated_time_minutes, // Handle new field
       updated_at: now,
       sync_status: existingTask.sync_status === 'new' ? 'new' : 'updated',
     };
@@ -156,19 +158,15 @@ export class TaskBreakerIndexedDBService implements ITaskBreakerService {
     const localItem = await this.getTable().get(id);
     if (!localItem) {
         console.warn(`TaskBreakerIndexedDBService.updateSyncStatus: Local item with id ${id} not found.`);
-        // If newServerId exists, we could try to put a new item, but it might lack full data.
-        // This scenario suggests a potential inconsistency. For now, we'll log and skip.
         return;
     }
 
     if (newServerId && newServerId !== id) {
-      // This implies the server assigned a new ID (e.g., during an add operation where client-generated ID wasn't used or was overridden).
-      // We need to delete the old local item and add/update with the new server ID.
       await this.getTable().delete(id);
       const newItemWithServerId: TaskBreakerTask = {
-          ...localItem, // Spread original local data
-          ...updateData, // Spread sync status and server timestamp
-          id: newServerId, // Crucially, use the new server ID
+          ...localItem, 
+          ...updateData, 
+          id: newServerId, 
       };
       await this.getTable().put(newItemWithServerId);
       console.log(`TaskBreakerIndexedDB: Synced local item ${id} to server ID ${newServerId}`);

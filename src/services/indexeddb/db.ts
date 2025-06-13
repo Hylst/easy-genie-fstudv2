@@ -10,7 +10,7 @@ export class EasyGenieDB extends Dexie {
   routines!: Table<Routine, string>;
   routineSteps!: Table<RoutineStep, string>;
   brainDumps!: Table<BrainDumpContent, string>;
-  brainDumpHistoryEntries!: Table<BrainDumpHistoryEntry, string>; // New table for BrainDump history
+  brainDumpHistoryEntries!: Table<BrainDumpHistoryEntry, string>;
   taskBreakerTasks!: Table<TaskBreakerTask, string>;
   taskBreakerCustomPresets!: Table<TaskBreakerCustomPreset, string>;
   taskBreakerSavedBreakdowns!: Table<TaskBreakerSavedBreakdown, string>;
@@ -20,33 +20,40 @@ export class EasyGenieDB extends Dexie {
   constructor() {
     super('EasyGenieDB_v1'); // Database name
 
-    // Version 6: Add timeFocusPresets table
-    this.version(6).stores({
-      priorityTasks: 'id, user_id, quadrant, created_at, updated_at, sync_status',
-      routines: 'id, user_id, name, created_at, updated_at, sync_status',
-      routineSteps: 'id, user_id, routine_id, order, created_at, updated_at, sync_status',
-      brainDumps: 'id, user_id, created_at, updated_at, sync_status',
-      taskBreakerTasks: 'id, user_id, parent_id, order, created_at, updated_at, sync_status',
-      taskBreakerCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
-      taskBreakerSavedBreakdowns: 'id, user_id, name, created_at, updated_at, sync_status',
-      priorityGridCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
-      timeFocusPresets: 'id, user_id, name, created_at, updated_at, sync_status',
-    });
-
     // Version 7: Add brainDumpHistoryEntries table
     this.version(7).stores({
       priorityTasks: 'id, user_id, quadrant, created_at, updated_at, sync_status',
       routines: 'id, user_id, name, created_at, updated_at, sync_status',
       routineSteps: 'id, user_id, routine_id, order, created_at, updated_at, sync_status',
       brainDumps: 'id, user_id, created_at, updated_at, sync_status',
-      brainDumpHistoryEntries: 'id, user_id, name, created_at, updated_at, sync_status', // Added new table schema
-      taskBreakerTasks: 'id, user_id, parent_id, order, created_at, updated_at, sync_status',
+      brainDumpHistoryEntries: 'id, user_id, name, created_at, updated_at, sync_status',
+      taskBreakerTasks: 'id, user_id, parent_id, order, created_at, updated_at, sync_status', // No estimated_time_minutes yet
+      taskBreakerCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
+      taskBreakerSavedBreakdowns: 'id, user_id, name, created_at, updated_at, sync_status',
+      priorityGridCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
+      timeFocusPresets: 'id, user_id, name, created_at, updated_at, sync_status',
+    });
+
+    // Version 8: Add estimated_time_minutes to taskBreakerTasks
+    this.version(8).stores({
+      priorityTasks: 'id, user_id, quadrant, created_at, updated_at, sync_status',
+      routines: 'id, user_id, name, created_at, updated_at, sync_status',
+      routineSteps: 'id, user_id, routine_id, order, created_at, updated_at, sync_status',
+      brainDumps: 'id, user_id, created_at, updated_at, sync_status',
+      brainDumpHistoryEntries: 'id, user_id, name, created_at, updated_at, sync_status',
+      taskBreakerTasks: 'id, user_id, parent_id, order, created_at, updated_at, sync_status, estimated_time_minutes', // Added estimated_time_minutes
       taskBreakerCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
       taskBreakerSavedBreakdowns: 'id, user_id, name, created_at, updated_at, sync_status',
       priorityGridCustomPresets: 'id, user_id, name, created_at, updated_at, sync_status',
       timeFocusPresets: 'id, user_id, name, created_at, updated_at, sync_status',
     }).upgrade(tx => {
-      console.log("Upgrading EasyGenieDB to version 7. Added brainDumpHistoryEntries table.");
+      console.log("Upgrading EasyGenieDB to version 8. Added estimated_time_minutes to taskBreakerTasks.");
+      // Migration logic if needed, e.g., setting default null for existing tasks
+      return tx.table('taskBreakerTasks').toCollection().modify(task => {
+        if (task.estimated_time_minutes === undefined) {
+          task.estimated_time_minutes = null;
+        }
+      });
     });
   }
 }

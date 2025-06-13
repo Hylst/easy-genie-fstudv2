@@ -7,6 +7,26 @@ import type { TaskBreakerTask, CreateTaskBreakerTaskDTO } from '@/types';
 export class TaskBreakerSupabaseService implements ITaskBreakerService {
   private tableName = 'task_breaker_tasks';
 
+  private mapToSupabase(data: CreateTaskBreakerTaskDTO | Partial<CreateTaskBreakerTaskDTO>, userId?: string): any {
+    const { estimated_time_minutes, ...rest } = data;
+    const payload: any = { ...rest };
+    if (userId) payload.user_id = userId;
+    // Supabase handles integer or null for estimated_time_minutes
+    if (estimated_time_minutes !== undefined) {
+      payload.estimated_time_minutes = estimated_time_minutes;
+    }
+    return payload;
+  }
+
+  private mapFromSupabase(data: any): TaskBreakerTask {
+    return {
+      ...data,
+      is_completed: data.is_completed ?? false,
+      estimated_time_minutes: data.estimated_time_minutes, // Will be number or null
+    } as TaskBreakerTask;
+  }
+
+
   async getAll(userId: string): Promise<TaskBreakerTask[]> {
     if (!userId) {
       console.warn("TaskBreakerSupabaseService.getAll: userId is required. Returning empty array.");
@@ -23,7 +43,7 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
       console.error("Error fetching all TaskBreaker tasks from Supabase:", error);
       throw error;
     }
-    return (data || []).map(item => ({ ...item, is_completed: item.is_completed ?? false }));
+    return (data || []).map(this.mapFromSupabase);
   }
 
   async getById(id: string, userId: string): Promise<TaskBreakerTask | null> {
@@ -42,7 +62,7 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
       console.error(`Error fetching TaskBreaker task ${id} from Supabase:`, error);
       throw error;
     }
-    return data ? { ...data, is_completed: data.is_completed ?? false } as TaskBreakerTask : null;
+    return data ? this.mapFromSupabase(data) : null;
   }
   
   async getTasksByParent(parentId: string | null, userId: string): Promise<TaskBreakerTask[]> {
@@ -67,7 +87,7 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
       console.error(`Error fetching tasks by parent ${parentId} from Supabase:`, error);
       throw error;
     }
-    return (data || []).map(item => ({ ...item, is_completed: item.is_completed ?? false }));
+    return (data || []).map(this.mapFromSupabase);
   }
 
 
@@ -89,18 +109,15 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
         depth = taskData.depth ?? 0;
     }
 
-    const taskToAdd = { 
-      text: taskData.text,
-      parent_id: taskData.parent_id,
-      main_task_text_context: taskData.main_task_text_context,
-      order: taskData.order,
-      user_id: userId, 
-      is_completed: taskData.is_completed ?? false,
-      depth: depth
-    };
+    const taskToAddSupabase = this.mapToSupabase({
+        ...taskData,
+        depth: depth,
+        is_completed: taskData.is_completed ?? false,
+    }, userId);
+
     const { data, error } = await supabase
       .from(this.tableName)
-      .insert(taskToAdd)
+      .insert(taskToAddSupabase)
       .select()
       .single();
 
@@ -109,36 +126,36 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
       throw error;
     }
     if (!data) throw new Error("Failed to add TaskBreaker task, no data returned.");
-    return { ...data, is_completed: data.is_completed ?? false } as TaskBreakerTask;
+    return this.mapFromSupabase(data);
   }
 
   async update(id: string, taskData: Partial<CreateTaskBreakerTaskDTO>, userId: string): Promise<TaskBreakerTask> {
     if (!userId) {
       throw new Error("TaskBreakerSupabaseService.update: userId is required.");
     }
-    // Destructure to prevent sending user_id in the update payload if it's part of taskData
-    const { user_id: ignoredUserId, ...updatePayload } = taskData;
+    const { user_id: ignoredUserId, ...updatePayloadRaw } = taskData;
     
     let depthToSet;
-    if (updatePayload.parent_id !== undefined) { 
-        if (updatePayload.parent_id === null) {
+    if (updatePayloadRaw.parent_id !== undefined) { 
+        if (updatePayloadRaw.parent_id === null) {
             depthToSet = 0;
         } else {
-            const parentTask = await this.getById(updatePayload.parent_id, userId);
-            depthToSet = parentTask ? parentTask.depth + 1 : 0; // Default to 0 if parent not found (should not happen with valid data)
+            const parentTask = await this.getById(updatePayloadRaw.parent_id, userId);
+            depthToSet = parentTask ? parentTask.depth + 1 : 0;
         }
-    } else if (updatePayload.depth !== undefined) {
-        depthToSet = updatePayload.depth;
+    } else if (updatePayloadRaw.depth !== undefined) {
+        depthToSet = updatePayloadRaw.depth;
     }
 
-    const taskToUpdate = {
-      ...updatePayload,
+    const taskToUpdateSupabase = this.mapToSupabase({
+      ...updatePayloadRaw,
       ...(depthToSet !== undefined && { depth: depthToSet }),
-    };
+    });
+
 
     const { data, error, count } = await supabase
       .from(this.tableName)
-      .update(taskToUpdate)
+      .update(taskToUpdateSupabase)
       .eq('id', id)
       .eq('user_id', userId)
       .select() 
@@ -147,7 +164,7 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
 
     if (error) {
       console.error(`Error updating TaskBreaker task ${id} in Supabase:`, error);
-      if (error.code === 'PGRST116' && count === 0) { // Specifically for "0 rows" case
+      if (error.code === 'PGRST116' && count === 0) { 
         const notFoundMsg = `Update for TaskBreaker task ${id} (user ${userId}) matched 0 rows. Task may not exist or RLS prevents update.`;
         console.warn(notFoundMsg);
         const customError = new Error(notFoundMsg);
@@ -163,17 +180,15 @@ export class TaskBreakerSupabaseService implements ITaskBreakerService {
         (customError as any).code = 'PGRST116_ZERO_ROWS_RETURNED_ON_UPDATE_SUCCESS';
         throw customError;
     }
-    return { ...data, is_completed: data.is_completed ?? false } as TaskBreakerTask;
+    return this.mapFromSupabase(data);
   }
 
   async delete(id: string, userId: string): Promise<void> {
     if (!userId) {
       throw new Error("TaskBreakerSupabaseService.delete: userId is required.");
     }
-    // IMPORTANT: Without ON DELETE CASCADE in the DB for parent_id,
-    // this will only delete the specified task, potentially orphaning children.
-    // The client-side IndexedDB logic handles recursive deletion locally.
-    // Sync logic would need to clean up orphans if this is not handled by DB.
+    // Recursive deletion must be handled by DB (ON DELETE CASCADE) or by client logic calling delete for each child.
+    // This service method will only delete the specified task.
     const { error, count } = await supabase
       .from(this.tableName)
       .delete()

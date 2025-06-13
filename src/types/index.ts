@@ -87,6 +87,7 @@ export interface TaskBreakerTask extends BaseEntity {
   is_completed: boolean;
   depth: number;
   order: number;
+  estimated_time_minutes?: number | null; // Added for time estimates
 }
 
 export interface TaskBreakerCustomPreset extends BaseEntity {
@@ -136,6 +137,7 @@ export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 
   parent_id?: string | null;
   main_task_text_context?: string;
   order: number;
+  estimated_time_minutes?: number | null; // Added
 };
 export type CreateTaskBreakerCustomPresetDTO = Omit<TaskBreakerCustomPreset, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 export type CreateTaskBreakerSavedBreakdownDTO = Omit<TaskBreakerSavedBreakdown, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
@@ -199,18 +201,19 @@ export interface TimeFocusDisplayPreset extends TimeFocusSystemPreset {
 
 // Types for Immersive Reader
 export interface ImmersiveReaderSettings {
-  fontSize: number; 
-  fontFamily: 'System' | 'Sans-Serif' | 'Serif' | 'OpenDyslexic'; 
-  lineHeight: number; 
-  letterSpacing: number; 
-  wordSpacing: number; 
-  theme: 'light' | 'dark' | 'sepia'; 
-  focusMode: 'none' | 'line' | 'paragraph'; 
+  fontSize: number;
+  fontFamily: 'System' | 'Sans-Serif' | 'Serif' | 'OpenDyslexic';
+  lineHeight: number;
+  letterSpacing: number;
+  wordSpacing: number;
+  theme: 'light' | 'dark' | 'sepia';
+  focusMode: 'none' | 'line' | 'paragraph'; // 'paragraph' is not yet fully implemented in UI rendering
   enableSentenceHighlighting: boolean;
 }
 
 export interface ImmersiveReaderDisplayPreset {
   name: string;
   settings: ImmersiveReaderSettings;
+  isSystemPreset?: boolean;
+  isDefault?: boolean; // Not directly used for selection logic, but can be for UI indicators
 }
-    
