@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText as BookOpenTextIcon, Sparkles, Brain, ClipboardPaste, Mic, Save, Trash2, TextQuote } from 'lucide-react';
+import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText as BookOpenTextIcon, Sparkles, Brain, ClipboardPaste, Mic, Save, Trash2, TextQuote, Download, Star, Edit3 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { simplifyText } from '@/ai/flows/simplify-text-flow';
 import { useAuth } from '@/contexts/AuthContext';
@@ -39,12 +39,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Separator } from '../ui/separator';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 
 const DEFAULT_SPEECH_RATE_GENIE = 1;
 const IMMERSIVE_READER_SETTINGS_KEY = "easyGenieImmersiveReaderSettings_v2";
 const IMMERSIVE_READER_MODE_KEY = "easyGenieImmersiveReaderMode_v1";
-const DISPLAY_PRESETS_STORAGE_KEY = "easyGenieImmersiveReaderDisplayPresets_v2";
+const DISPLAY_PRESETS_STORAGE_KEY = "easyGenieImmersiveReaderDisplayPresets_v2"; // Keep v2 as structure is fine
+const IMMERSIVE_READER_DEFAULT_PRESET_NAME_KEY = "easyGenieImmersiveReaderDefaultPresetName_v1";
+
 
 const VALID_FONT_FAMILIES: ImmersiveReaderSettings['fontFamily'][] = ['System', 'Sans-Serif', 'Serif', 'OpenDyslexic'];
 
@@ -56,8 +60,31 @@ const defaultDisplaySettings: ImmersiveReaderSettings = {
   wordSpacing: 1,
   theme: 'light',
   focusMode: 'none',
-  enableSentenceHighlighting: false, // Default is off
+  enableSentenceHighlighting: false,
 };
+
+const systemDisplayPresets: ImmersiveReaderDisplayPreset[] = [
+  {
+    name: "Clair & Simple (Défaut Système)",
+    settings: { ...defaultDisplaySettings },
+    isSystemPreset: true,
+  },
+  {
+    name: "Sombre & Focus",
+    settings: { ...defaultDisplaySettings, theme: 'dark', fontSize: 20, letterSpacing: 0.8, enableSentenceHighlighting: true },
+    isSystemPreset: true,
+  },
+  {
+    name: "Confort Sépia",
+    settings: { ...defaultDisplaySettings, theme: 'sepia', fontSize: 19, lineHeight: 1.7, fontFamily: 'Serif' },
+    isSystemPreset: true,
+  },
+  {
+    name: "OpenDyslexic Optimisé",
+    settings: { ...defaultDisplaySettings, fontFamily: 'OpenDyslexic', fontSize: 20, lineHeight: 1.8, letterSpacing: 1, wordSpacing: 1.5, enableSentenceHighlighting: true },
+    isSystemPreset: true,
+  }
+];
 
 interface ParsedTextElement {
   text: string;
@@ -94,53 +121,61 @@ export function ImmersiveReaderTool() {
   const [isListening, setIsListening] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
 
-  const [displayPresets, setDisplayPresets] = useState<ImmersiveReaderDisplayPreset[]>([]);
+  const [userPresets, setUserPresets] = useState<ImmersiveReaderDisplayPreset[]>([]);
   const [isLoadingUserPresets, setIsLoadingUserPresets] = useState<boolean>(false);
   const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
   const [presetToDelete, setPresetToDelete] = useState<string | null>(null);
+  const [defaultPresetName, setDefaultPresetName] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedSettings = localStorage.getItem(IMMERSIVE_READER_SETTINGS_KEY);
-      if (savedSettings) {
-        try {
-          const parsedSettings = JSON.parse(savedSettings) as ImmersiveReaderSettings;
-          if (!VALID_FONT_FAMILIES.includes(parsedSettings.fontFamily)) {
-            parsedSettings.fontFamily = defaultDisplaySettings.fontFamily;
-          }
-          setDisplaySettings({ ...defaultDisplaySettings, ...parsedSettings });
-        }
-        catch (e) {
-          console.error("Failed to parse saved display settings:", e);
-          localStorage.removeItem(IMMERSIVE_READER_SETTINGS_KEY);
-          setDisplaySettings(defaultDisplaySettings);
-        }
-      } else {
-        setDisplaySettings(defaultDisplaySettings);
-      }
       const savedMode = localStorage.getItem(IMMERSIVE_READER_MODE_KEY);
       if (savedMode === 'genie' || savedMode === 'magique') { setToolMode(savedMode as 'magique' | 'genie'); }
 
-      const savedDisplayPresets = localStorage.getItem(DISPLAY_PRESETS_STORAGE_KEY);
-       if (savedDisplayPresets) {
+      const savedUserPresetsString = localStorage.getItem(DISPLAY_PRESETS_STORAGE_KEY);
+      let loadedUserPresets: ImmersiveReaderDisplayPreset[] = [];
+      if (savedUserPresetsString) {
         try {
-          const parsedItems = JSON.parse(savedDisplayPresets);
+          const parsedItems = JSON.parse(savedUserPresetsString);
           if (Array.isArray(parsedItems)) {
-            const validPresets = parsedItems.filter(
+            loadedUserPresets = parsedItems.filter(
               (p): p is ImmersiveReaderDisplayPreset =>
-                p &&
-                typeof p.name === 'string' && p.name.trim() !== "" &&
+                p && typeof p.name === 'string' && p.name.trim() !== "" &&
                 typeof p.settings === 'object' && p.settings !== null &&
                 VALID_FONT_FAMILIES.includes(p.settings.fontFamily) &&
                 typeof p.settings.enableSentenceHighlighting === 'boolean'
             );
-            setDisplayPresets(validPresets);
-          } else { setDisplayPresets([]); }
-        } catch (e) {
-          console.error("Failed to parse display presets from localStorage:", e);
-          localStorage.removeItem(DISPLAY_PRESETS_STORAGE_KEY);
-          setDisplayPresets([]);
+          }
+        } catch (e) { console.error("Failed to parse display presets from localStorage:", e); }
+      }
+      setUserPresets(loadedUserPresets);
+
+      const savedDefaultPresetName = localStorage.getItem(IMMERSIVE_READER_DEFAULT_PRESET_NAME_KEY);
+      setDefaultPresetName(savedDefaultPresetName);
+
+      let initialSettingsApplied = false;
+      if (savedDefaultPresetName) {
+        const allInitialPresets = [...systemDisplayPresets, ...loadedUserPresets];
+        const foundDefaultPreset = allInitialPresets.find(p => p.name === savedDefaultPresetName);
+        if (foundDefaultPreset) {
+          setDisplaySettings({ ...defaultDisplaySettings, ...foundDefaultPreset.settings });
+          initialSettingsApplied = true;
+        }
+      }
+
+      if (!initialSettingsApplied) {
+        const savedSettings = localStorage.getItem(IMMERSIVE_READER_SETTINGS_KEY);
+        if (savedSettings) {
+          try {
+            const parsedSettings = JSON.parse(savedSettings) as ImmersiveReaderSettings;
+            if (!VALID_FONT_FAMILIES.includes(parsedSettings.fontFamily)) {
+              parsedSettings.fontFamily = defaultDisplaySettings.fontFamily;
+            }
+            setDisplaySettings({ ...defaultDisplaySettings, ...parsedSettings });
+          } catch (e) { setDisplaySettings(defaultDisplaySettings); }
+        } else {
+          setDisplaySettings(defaultDisplaySettings);
         }
       }
     }
@@ -153,8 +188,16 @@ export function ImmersiveReaderTool() {
   useEffect(() => {
     if (typeof window !== 'undefined') { localStorage.setItem(IMMERSIVE_READER_MODE_KEY, toolMode); }
   }, [toolMode]);
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined' && defaultPresetName) {
+      localStorage.setItem(IMMERSIVE_READER_DEFAULT_PRESET_NAME_KEY, defaultPresetName);
+    } else if (typeof window !== 'undefined' && defaultPresetName === null) {
+      localStorage.removeItem(IMMERSIVE_READER_DEFAULT_PRESET_NAME_KEY);
+    }
+  }, [defaultPresetName]);
 
-  const saveDisplayPresetsToLocalStorage = useCallback((presets: ImmersiveReaderDisplayPreset[]) => {
+  const saveUserPresetsToLocalStorage = useCallback((presets: ImmersiveReaderDisplayPreset[]) => {
     if (typeof window !== 'undefined') {
       const presetsToSave = presets.filter(p => p.name && p.name.trim() !== "");
       localStorage.setItem(DISPLAY_PRESETS_STORAGE_KEY, JSON.stringify(presetsToSave));
@@ -174,16 +217,18 @@ export function ImmersiveReaderTool() {
     if (!text.trim()) return elements;
 
     let sentenceGroupIndex = 0;
-    const sentenceRegex = /([^\.!?]+(?:[\.!?](?=\s+|$)|$))/g;
+    const sentenceRegex = /([^\.!?]+(?:[\.!?](?=\s+[\w"“'‘])|$)|[^\.!?]+$)/g;
     let matches;
     const sentenceChunks: { text: string, originalStartIndex: number }[] = [];
     
     let lastIndex = 0;
     while ((matches = sentenceRegex.exec(text)) !== null) {
-      sentenceChunks.push({ text: matches[0], originalStartIndex: matches.index });
+      if (matches[0].trim()) { // Ensure sentence is not just whitespace
+        sentenceChunks.push({ text: matches[0], originalStartIndex: matches.index });
+      }
       lastIndex = matches.index + matches[0].length;
     }
-    if (lastIndex < text.length) {
+    if (lastIndex < text.length && text.substring(lastIndex).trim()) {
       sentenceChunks.push({ text: text.substring(lastIndex), originalStartIndex: lastIndex });
     }
     if (sentenceChunks.length === 0 && text.trim().length > 0) {
@@ -211,6 +256,7 @@ export function ImmersiveReaderTool() {
   }, []);
 
   useEffect(() => {
+    wordRefs.current = []; // Reset refs when text changes
     const textToParse = toolMode === 'genie' ? (processedText.trim() || inputText.trim()) : '';
     if (toolMode === 'genie') {
       const newElements = generateDisplayElements(textToParse);
@@ -226,15 +272,13 @@ export function ImmersiveReaderTool() {
   }, [inputText, processedText, toolMode, generateDisplayElements, synthesis]);
 
   useEffect(() => {
-    wordRefs.current = wordRefs.current.slice(0, parsedTextElements.length);
-  }, [parsedTextElements]);
-
-
-  useEffect(() => {
     if (toolMode === 'genie' && isSpeaking && currentSpokenWordInfo && wordRefs.current.length > 0) {
-        const currentElementIndex = parsedTextElements.findIndex(el => 
-            el.type === 'word' && el.originalStartIndex === currentSpokenWordInfo.originalStartIndex
+        const currentElement = parsedTextElements.find(el => 
+            el.type === 'word' && 
+            el.originalStartIndex <= currentSpokenWordInfo.originalStartIndex &&
+            currentSpokenWordInfo.originalStartIndex < el.originalEndIndex
         );
+        const currentElementIndex = currentElement ? parsedTextElements.indexOf(currentElement) : -1;
 
         if (currentElementIndex !== -1) {
             const targetElement = wordRefs.current[currentElementIndex];
@@ -362,7 +406,7 @@ export function ImmersiveReaderTool() {
     utteranceRef.current.onend = () => { setIsSpeaking(false); setCurrentWordCharIndex(-1); setCurrentSpokenWordInfo(null); };
     utteranceRef.current.onerror = (event) => {
       if (event.error === 'interrupted') {
-        console.info("Speech synthesis error:", event.error);
+        // console.info("Speech synthesis error:", event.error);
       } else {
         console.error("Speech synthesis error:", event.error);
         toast({ title: "Erreur de lecture", description: `Impossible de lire le texte: ${event.error}`, variant: "destructive"});
@@ -406,7 +450,7 @@ export function ImmersiveReaderTool() {
       }
       const text = await navigator.clipboard.readText();
       setInputText(prev => (prev ? prev + '\n' + text : text));
-      setProcessedText(''); // Clear processed text as input has changed
+      setProcessedText(''); 
       toast({ title: "Texte collé !", description: "Le contenu du presse-papiers a été ajouté." });
     } catch (err) {
       console.error('Failed to read clipboard contents: ', err);
@@ -420,36 +464,54 @@ export function ImmersiveReaderTool() {
       return;
     }
     const trimmedName = newPresetName.trim();
-    if (displayPresets.some(p => p.name === trimmedName)) {
-      toast({ title: "Nom déjà utilisé", description: "Ce nom de préréglage existe déjà.", variant: "destructive" });
+    const allCurrentPresets = [...systemDisplayPresets, ...userPresets];
+    if (allCurrentPresets.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
+      toast({ title: "Nom déjà utilisé", description: "Ce nom de préréglage existe déjà (système ou personnalisé).", variant: "destructive" });
       return;
     }
-    const newPreset: ImmersiveReaderDisplayPreset = { name: trimmedName, settings: displaySettings };
-    const updatedPresets = [...displayPresets, newPreset];
-    setDisplayPresets(updatedPresets);
-    saveDisplayPresetsToLocalStorage(updatedPresets);
+    const newPreset: ImmersiveReaderDisplayPreset = { name: trimmedName, settings: displaySettings, isSystemPreset: false };
+    const updatedUserPresets = [...userPresets, newPreset];
+    setUserPresets(updatedUserPresets);
+    saveUserPresetsToLocalStorage(updatedUserPresets);
     toast({ title: "Préréglage sauvegardé !", description: `"${newPreset.name}" a été ajouté.` });
     setNewPresetName('');
     setShowSavePresetDialog(false);
   };
 
   const handleLoadDisplayPreset = (presetName: string) => {
-    const preset = displayPresets.find(p => p.name === presetName);
+    const allCurrentPresets = [...systemDisplayPresets, ...userPresets];
+    const preset = allCurrentPresets.find(p => p.name === presetName);
     if (preset) {
       setDisplaySettings(preset.settings);
       toast({ title: "Préréglage chargé", description: `Les paramètres de "${preset.name}" ont été appliqués.` });
     }
   };
+  
+  const handleSetDefaultPreset = (presetName: string | null) => {
+    if (defaultPresetName === presetName) { // If clicking current default, unset it
+        setDefaultPresetName(null);
+        toast({ title: "Préréglage par défaut retiré" });
+    } else {
+        setDefaultPresetName(presetName);
+        if (presetName) {
+           toast({ title: `"${presetName}" défini par défaut` });
+        }
+    }
+  };
 
   const confirmDeleteDisplayPreset = () => {
     if (!presetToDelete) return;
-    const updatedPresets = displayPresets.filter(p => p.name !== presetToDelete);
-    setDisplayPresets(updatedPresets);
-    saveDisplayPresetsToLocalStorage(updatedPresets);
+    const updatedUserPresets = userPresets.filter(p => p.name !== presetToDelete);
+    setUserPresets(updatedUserPresets);
+    saveUserPresetsToLocalStorage(updatedUserPresets);
+    if(defaultPresetName === presetToDelete) {
+        setDefaultPresetName(null); // Unset if it was the default
+    }
     toast({ title: "Préréglage supprimé", description: `"${presetToDelete}" a été supprimé.`, variant: "destructive" });
     setPresetToDelete(null);
   };
 
+  const allCurrentDisplayPresets = [...systemDisplayPresets, ...userPresets];
 
   const textDisplayStyles = toolMode === 'genie' ? {
     fontSize: `${displaySettings.fontSize}px`,
@@ -469,6 +531,7 @@ export function ImmersiveReaderTool() {
 
 
   return (
+    <TooltipProvider>
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
         <div className="flex justify-between items-start">
@@ -617,39 +680,60 @@ export function ImmersiveReaderTool() {
                                 </div>
 
                                 <Separator className="my-2" />
-
+                                
                                 <div className="space-y-2">
-                                  <h4 className="font-medium text-sm">Gestion des Préréglages d'Affichage</h4>
-                                  <div className="flex items-center gap-2">
-                                    <Select onValueChange={handleLoadDisplayPreset} value="">
-                                      <SelectTrigger className="flex-grow"><SelectValue placeholder="Charger un préréglage..." /></SelectTrigger>
-                                      <SelectContent>
-                                        {isLoadingUserPresets && <div className="flex justify-center p-2"><Loader2 className="h-5 w-5 animate-spin"/></div>}
-                                        {!isLoadingUserPresets && displayPresets.filter(p => p.name && p.name.trim() !== "").length === 0 && (
-                                          <p className="p-2 text-sm text-muted-foreground">Aucun préréglage.</p>
-                                        )}
-                                        {!isLoadingUserPresets && displayPresets.filter(p => p.name && p.name.trim() !== "").map(p => (
-                                          <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    <Button onClick={() => setShowSavePresetDialog(true)} size="icon" variant="outline" aria-label="Sauvegarder le préréglage actuel">
-                                      <Save className="h-4 w-4" />
+                                  <div className="flex justify-between items-center">
+                                     <h4 className="font-medium text-sm">Gestion des Préréglages d'Affichage</h4>
+                                     <Button onClick={() => setShowSavePresetDialog(true)} size="sm" variant="outline">
+                                        <Save className="mr-2 h-3 w-3" /> Sauvegarder Config
                                     </Button>
                                   </div>
-                                  {displayPresets.filter(p => p.name && p.name.trim() !== "").length > 0 && (
-                                    <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-1">
-                                      <Label className="text-xs text-muted-foreground">Mes Préréglages :</Label>
-                                      {displayPresets.filter(p => p.name && p.name.trim() !== "").map(p => (
-                                        <div key={p.name} className="flex items-center justify-between text-sm p-1 hover:bg-muted/30 rounded-md">
-                                          <span className="truncate cursor-default" title={p.name}>{p.name}</span>
-                                          <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => setPresetToDelete(p.name)}>
-                                            <Trash2 className="h-3 w-3 text-destructive" />
-                                          </Button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
+                                  <Accordion type="multiple" defaultValue={['system-presets', 'user-presets']} className="w-full">
+                                    <AccordionItem value="system-presets">
+                                        <AccordionTrigger className="text-sm">Presets Système ({systemDisplayPresets.length})</AccordionTrigger>
+                                        <AccordionContent className="space-y-1">
+                                            {systemDisplayPresets.length === 0 && <p className="text-xs text-muted-foreground px-1 py-2">Aucun preset système.</p>}
+                                            {systemDisplayPresets.map(preset => (
+                                                <div key={preset.name} className="flex items-center justify-between p-1.5 hover:bg-muted/50 rounded-md gap-1">
+                                                    <span className="text-sm truncate flex-grow" title={preset.name}>{preset.name}</span>
+                                                    <div className="flex-shrink-0 flex gap-0.5">
+                                                        <Tooltip><TooltipTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleLoadDisplayPreset(preset.name)}><Download className="h-4 w-4" /></Button>
+                                                        </TooltipTrigger><TooltipContent><p>Charger "{preset.name}"</p></TooltipContent></Tooltip>
+                                                        <Tooltip><TooltipTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSetDefaultPreset(preset.name)}><Star className={cn("h-4 w-4", defaultPresetName === preset.name ? "fill-yellow-400 text-yellow-500" : "text-muted-foreground")} /></Button>
+                                                        </TooltipTrigger><TooltipContent><p>{defaultPresetName === preset.name ? "Retirer des favoris" : `Définir "${preset.name}" par défaut`}</p></TooltipContent></Tooltip>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                    <AccordionItem value="user-presets">
+                                        <AccordionTrigger className="text-sm">Mes Presets Personnalisés ({userPresets.filter(p => !p.isSystemPreset).length})</AccordionTrigger>
+                                        <AccordionContent className="space-y-1">
+                                            {isLoadingUserPresets && <div className="flex justify-center p-2"><Loader2 className="h-5 w-5 animate-spin"/></div>}
+                                            {!isLoadingUserPresets && userPresets.filter(p => !p.isSystemPreset).length === 0 && (
+                                                <p className="text-xs text-muted-foreground px-1 py-2">Aucun préréglage personnalisé.</p>
+                                            )}
+                                            {!isLoadingUserPresets && userPresets.filter(p => !p.isSystemPreset && p.name && p.name.trim() !== "").map(preset => (
+                                                <div key={preset.name} className="flex items-center justify-between p-1.5 hover:bg-muted/50 rounded-md gap-1">
+                                                    <span className="text-sm truncate flex-grow" title={preset.name}>{preset.name}</span>
+                                                    <div className="flex-shrink-0 flex gap-0.5">
+                                                        <Tooltip><TooltipTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleLoadDisplayPreset(preset.name)}><Download className="h-4 w-4" /></Button>
+                                                        </TooltipTrigger><TooltipContent><p>Charger "{preset.name}"</p></TooltipContent></Tooltip>
+                                                        <Tooltip><TooltipTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSetDefaultPreset(preset.name)}><Star className={cn("h-4 w-4", defaultPresetName === preset.name ? "fill-yellow-400 text-yellow-500" : "text-muted-foreground")} /></Button>
+                                                        </TooltipTrigger><TooltipContent><p>{defaultPresetName === preset.name ? "Retirer des favoris" : `Définir "${preset.name}" par défaut`}</p></TooltipContent></Tooltip>
+                                                        <Tooltip><TooltipTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPresetToDelete(preset.name)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                                        </TooltipTrigger><TooltipContent><p>Supprimer "{preset.name}"</p></TooltipContent></Tooltip>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                  </Accordion>
                                 </div>
                             </div>
                         </ScrollArea>
@@ -719,7 +803,7 @@ export function ImmersiveReaderTool() {
             <div
               className={cn(
                   "p-4 text-base leading-relaxed whitespace-pre-wrap max-w-none",
-                  toolMode === 'magique' && "prose dark:prose-invert"
+                  toolMode === 'magique' && "prose dark:prose-invert" // Appliquer prose seulement en mode magique
                 )}
               style={toolMode === 'genie' ? textDisplayStyles : {}} 
             >
@@ -738,8 +822,8 @@ export function ImmersiveReaderTool() {
                       ref={el => { wordRefs.current[index] = el; }}
                       className={cn(
                           "transition-colors duration-150 ease-in-out", 
-                          isCurrentWord ? "bg-primary/50 text-primary-foreground rounded px-0.5" 
-                                        : isInCurrentSentenceGroup ? "bg-primary/20 rounded" : ""
+                          isCurrentWord ? "bg-primary/50 dark:bg-primary/70 text-primary-foreground rounded px-0.5" 
+                                        : isInCurrentSentenceGroup ? "bg-primary/20 dark:bg-primary/40 rounded" : ""
                       )}
                     >
                       {element.text}
@@ -768,5 +852,6 @@ export function ImmersiveReaderTool() {
         </p>
       </CardFooter>
     </Card>
+    </TooltipProvider>
   );
 }
