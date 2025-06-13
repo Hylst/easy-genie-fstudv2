@@ -37,7 +37,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -774,8 +773,8 @@ export function TaskBreakerTool() {
       if (!user) return;
       setIsSubmitting(true);
       try {
-        await updateTaskBreakerTask(taskId, { text: newText });
-        setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? {...t, text: newText, updated_at: new Date().toISOString()} : t));
+        const updatedTask = await updateTaskBreakerTask(taskId, { text: newText });
+        setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? { ...t, ...updatedTask } : t));
       } catch (error) {
         console.error("Error saving task text:", error);
         toast({ title: "Erreur de sauvegarde", description: (error as Error).message, variant: "destructive"});
@@ -786,12 +785,6 @@ export function TaskBreakerTool() {
     }, 1000);
   }, [user, toast, fetchTaskData]);
 
-  const handleSubTaskTextChange = (taskId: string, newText: string) => {
-    setAllUiTasksFlat(prevFlat => prevFlat.map(node =>
-      node.id === taskId ? { ...node, text: newText } : node
-    ));
-    handleDebouncedTaskTextChange(taskId, newText);
-  };
 
   const handleDebouncedTimeEstimateChange = useCallback(async (taskId: string, newTime: number | null) => {
     if (timeEstimateDebounceRef.current) clearTimeout(timeEstimateDebounceRef.current);
@@ -799,8 +792,8 @@ export function TaskBreakerTool() {
       if (!user) return;
       setIsSubmitting(true);
       try {
-        await updateTaskBreakerTask(taskId, { estimated_time_minutes: newTime });
-        setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? {...t, estimated_time_minutes: newTime, updated_at: new Date().toISOString()} : t));
+        const updatedTask = await updateTaskBreakerTask(taskId, { estimated_time_minutes: newTime });
+        setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? {...t, ...updatedTask} : t));
         toast({ title: "Estimation de temps sauvegardée" });
       } catch (error) {
         console.error("Error saving time estimate:", error);
@@ -817,7 +810,7 @@ export function TaskBreakerTool() {
     if (value === '' || (!isNaN(newTime!) && newTime! >= 0)) {
         setAllUiTasksFlat(prevFlat => prevFlat.map(node =>
             node.id === taskId ? { ...node, estimated_time_minutes: newTime } : node
-        ));
+        )); // Optimistic UI update
         handleDebouncedTimeEstimateChange(taskId, newTime);
     }
   };
@@ -975,8 +968,8 @@ export function TaskBreakerTool() {
 
     setIsSubmitting(true);
     try {
-      await updateTaskBreakerTask(taskId, { is_completed: !task.is_completed });
-      setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? {...t, is_completed: !task.is_completed, updated_at: new Date().toISOString()} : t));
+      const updatedTask = await updateTaskBreakerTask(taskId, { is_completed: !task.is_completed });
+      setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? {...t, ...updatedTask} : t));
       toast({ title: task.is_completed ? "Tâche marquée non faite" : "Tâche complétée !" });
     } catch (error) {
       console.error("Error toggling completion:", error);
@@ -1102,25 +1095,16 @@ export function TaskBreakerTool() {
     }
     setIsSubmitting(true);
     const contextToSave = currentMainTaskContextRef.current;
-    const serializeTree = (nodes: UITaskBreakerTask[]): any[] => {
-        return nodes.map(node => ({
-            id: node.id, 
-            text: node.text,
-            is_completed: node.is_completed,
-            estimated_time_minutes: node.estimated_time_minutes,
-            order: node.order, 
-            depth: node.depth, 
-            parent_id: node.parent_id, 
-            subTasks: node.subTasks ? serializeTree(node.subTasks) : []
-        }));
-    };
-    const tasksToSave = serializeTree(taskTree);
+    
+    // Sérialiser uniquement les tâches du contexte actuel
+    const tasksForCurrentContext = allUiTasksFlat.filter(t => t.main_task_text_context === contextToSave);
+    const treeToSaveForHistory = buildTree(tasksForCurrentContext, null);
 
     try {
         const dto: CreateTaskBreakerSavedBreakdownDTO = {
             name: currentBreakdownName,
             main_task_text: contextToSave,
-            sub_tasks_json: JSON.stringify(tasksToSave),
+            sub_tasks_json: JSON.stringify(treeToSaveForHistory), // Sauvegarder l'arbre filtré
             intensity_on_save: intensity,
         };
         await addTaskBreakerSavedBreakdown(dto);
@@ -1146,7 +1130,7 @@ export function TaskBreakerTool() {
         main_task_text_context: targetContext,
         is_completed: (taskItem as UITaskBreakerTask).is_completed || false,
         depth: currentDepth,
-        order: i,
+        order: i, 
         estimated_time_minutes: (taskItem as UITaskBreakerTask).estimated_time_minutes ?? null,
       };
       const addedDbTask = await addTaskBreakerTask(taskDto);
@@ -1311,7 +1295,6 @@ export function TaskBreakerTool() {
     const contextToDelete = currentMainTaskContextRef.current;
     const mainInputText = mainTaskInputRef.current.trim();
 
-    // Check if there's anything to clear at all (either a saved context or text in the input field)
     if (!contextToDelete && !mainInputText) {
       toast({ title: "Rien à effacer", description: "Aucune tâche principale ou décomposition active.", variant: "default"});
       setShowClearTaskDialog(false);
@@ -1321,22 +1304,18 @@ export function TaskBreakerTool() {
     setIsSubmitting(true);
     try {
       if (contextToDelete) {
-          // Get root tasks for the current context
           const rootTasksInContext = allUiTasksFlat.filter(
             t => t.main_task_text_context === contextToDelete && t.parent_id === null
           );
 
           for (const task of rootTasksInContext) {
-            // Deleting a root task should trigger recursive deletion of its children by the service layer.
-            await deleteTaskBreakerTask(task.id);
+            await deleteTaskBreakerTask(task.id); // This will trigger recursive deletion in service
           }
-          // After DB operations, filter out all tasks associated with the deleted context from the UI state.
           setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context !== contextToDelete));
       }
-      // Always clear the main input field and current context state
       setMainTaskInput('');
       setCurrentMainTaskContext('');
-      setExpandedStates({}); // Reset expansion states for any new/loaded task
+      setExpandedStates({});
 
       setShowClearTaskDialog(false);
       toast({ title: "Tâche actuelle effacée", variant: "destructive"});
@@ -1345,7 +1324,6 @@ export function TaskBreakerTool() {
     } catch (error) {
       console.error("Error clearing current task:", error);
       toast({ title: "Erreur d'effacement", description:(error as Error).message, variant: "destructive"});
-      // Re-fetch data to ensure UI consistency after error
       await fetchTaskData({preserveActiveState: false});
     } finally {
       setIsSubmitting(false);
@@ -1472,6 +1450,33 @@ export function TaskBreakerTool() {
   }, [allUiTasksFlat]);
 
   const RenderTaskNode: React.FC<{ task: UITaskBreakerTask }> = React.memo(({ task }) => {
+    const [localTaskText, setLocalTaskText] = useState(task.text);
+    const [localTimeEstimate, setLocalTimeEstimate] = useState(task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString());
+
+    useEffect(() => {
+      setLocalTaskText(task.text);
+    }, [task.text]);
+    
+    useEffect(() => {
+        setLocalTimeEstimate(task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString());
+    }, [task.estimated_time_minutes]);
+
+
+    const handleLocalTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setLocalTaskText(e.target.value);
+        handleDebouncedTaskTextChange(task.id, e.target.value);
+    };
+    
+    const handleLocalTimeEstimateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setLocalTimeEstimate(value);
+        const numValue = value === '' ? null : parseInt(value, 10);
+        if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
+            handleDebouncedTimeEstimateChange(task.id, numValue);
+        }
+    };
+
+
     const isCurrentlyLoadingAI = isLoadingAI && loadingAITaskId === task.id;
     const { completedLeaves, totalLeaves } = toolMode === 'genie' ? calculateProgress(task) : { completedLeaves: 0, totalLeaves: 0 };
     const progressPercentage = totalLeaves > 0 ? (completedLeaves / totalLeaves) * 100 : (task.is_completed ? 100 : 0);
@@ -1483,16 +1488,14 @@ export function TaskBreakerTool() {
       <div style={{ marginLeft: `${task.depth * 15}px` }} className="mb-1.5">
         <div className={`flex items-center gap-1 p-1.5 border rounded-md bg-background hover:bg-muted/50 transition-colors ${task.is_completed && !hasChildren ? 'opacity-60' : ''}`}>
           <TooltipProvider>
-          { (task.subTasks && task.subTasks.length > 0) || hasChildren || task.isExpanded ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={() => toggleSubTaskExpansion(task.id)} className="h-6 w-6 p-0 shrink-0">
                   {task.isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent><p>Afficher ou masquer les sous-tâches de cette étape.</p></TooltipContent>
+              <TooltipContent><p>{task.isExpanded ? "Replier" : "Déplier"} cette étape pour voir/ajouter des sous-tâches.</p></TooltipContent>
             </Tooltip>
-          ) : ( <span className="w-6 h-6 inline-block shrink-0"></span>  )}
           </TooltipProvider>
           <TooltipProvider>
             <Tooltip>
@@ -1505,8 +1508,8 @@ export function TaskBreakerTool() {
             </Tooltip>
           </TooltipProvider>
           <Input
-            value={task.text}
-            onChange={(e) => handleSubTaskTextChange(task.id, e.target.value)}
+            value={localTaskText}
+            onChange={handleLocalTextChange}
             className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed && !hasChildren ? 'line-through text-muted-foreground' : ''} transition-all duration-200 ease-in-out hover:shadow-inner hover:animate-subtle-shake transform hover:scale-[1.005]`}
             disabled={isSubmitting || isLoadingAI || !user}
           />
@@ -1515,8 +1518,8 @@ export function TaskBreakerTool() {
                 <Input
                     type="number"
                     min="0"
-                    value={task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString()}
-                    onChange={(e) => handleTimeEstimateChange(task.id, e.target.value)}
+                    value={localTimeEstimate}
+                    onChange={handleLocalTimeEstimateChange}
                     className="h-6 w-16 text-xs p-1 text-right"
                     placeholder="min"
                     disabled={isSubmitting || isLoadingAI || !user}
@@ -1597,6 +1600,7 @@ export function TaskBreakerTool() {
         </div>
         )}
 
+        {/* Recursive rendering for children, ensuring correct key and passing task prop */}
         {task.isExpanded && task.subTasks && task.subTasks.length > 0 && (
           <div className="mt-2">
             {task.subTasks.map(childTask => (
@@ -2083,4 +2087,3 @@ export function TaskBreakerTool() {
     </TooltipProvider>
   );
 }
-
