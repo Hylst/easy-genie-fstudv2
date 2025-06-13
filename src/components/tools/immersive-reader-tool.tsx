@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText as BookOpenTextIcon, Sparkles, Brain, ClipboardPaste, Mic, Save, Trash2, TextQuote } from 'lucide-react'; // Added TextQuote
+import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText as BookOpenTextIcon, Sparkles, Brain, ClipboardPaste, Mic, Save, Trash2, TextQuote } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { simplifyText } from '@/ai/flows/simplify-text-flow';
 import { useAuth } from '@/contexts/AuthContext';
@@ -56,15 +56,15 @@ const defaultDisplaySettings: ImmersiveReaderSettings = {
   wordSpacing: 1,
   theme: 'light',
   focusMode: 'none',
-  enableSentenceHighlighting: false,
+  enableSentenceHighlighting: false, // Default is off
 };
 
 interface ParsedTextElement {
   text: string;
   type: 'word' | 'space';
-  originalStartIndex: number; // character index in the full source text
-  originalEndIndex: number;   // character index in the full source text
-  sentenceGroupIndex: number; // index of the sentence group this element belongs to
+  originalStartIndex: number; 
+  originalEndIndex: number;   
+  sentenceGroupIndex: number; 
 }
 
 
@@ -87,7 +87,7 @@ export function ImmersiveReaderTool() {
   const [showSettingsDialog, setShowSettingsDialog] = useState<boolean>(false);
   
   const [parsedTextElements, setParsedTextElements] = useState<ParsedTextElement[]>([]);
-  const [currentWordCharIndex, setCurrentWordCharIndex] = useState<number>(-1); // Actual char index from speech engine
+  const [currentWordCharIndex, setCurrentWordCharIndex] = useState<number>(-1); 
   const [currentSpokenWordInfo, setCurrentSpokenWordInfo] = useState<{ originalStartIndex: number, sentenceGroupIndex: number } | null>(null);
   const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
@@ -100,7 +100,6 @@ export function ImmersiveReaderTool() {
   const [newPresetName, setNewPresetName] = useState('');
   const [presetToDelete, setPresetToDelete] = useState<string | null>(null);
 
-
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedSettings = localStorage.getItem(IMMERSIVE_READER_SETTINGS_KEY);
@@ -110,7 +109,6 @@ export function ImmersiveReaderTool() {
           if (!VALID_FONT_FAMILIES.includes(parsedSettings.fontFamily)) {
             parsedSettings.fontFamily = defaultDisplaySettings.fontFamily;
           }
-          // Ensure new settings have defaults if not present in localStorage
           setDisplaySettings({ ...defaultDisplaySettings, ...parsedSettings });
         }
         catch (e) {
@@ -135,7 +133,7 @@ export function ImmersiveReaderTool() {
                 typeof p.name === 'string' && p.name.trim() !== "" &&
                 typeof p.settings === 'object' && p.settings !== null &&
                 VALID_FONT_FAMILIES.includes(p.settings.fontFamily) &&
-                typeof p.settings.enableSentenceHighlighting === 'boolean' // Check new setting
+                typeof p.settings.enableSentenceHighlighting === 'boolean'
             );
             setDisplayPresets(validPresets);
           } else { setDisplayPresets([]); }
@@ -163,7 +161,6 @@ export function ImmersiveReaderTool() {
     }
   }, []);
 
-
   useEffect(() => {
     return () => { if (synthesis && synthesis.speaking) { synthesis.cancel(); } };
   }, [synthesis]);
@@ -177,10 +174,6 @@ export function ImmersiveReaderTool() {
     if (!text.trim()) return elements;
 
     let sentenceGroupIndex = 0;
-    let currentOffset = 0;
-
-    // Regex to roughly split by sentences. This is a heuristic and may not be perfect.
-    // It tries to capture sequences ending in punctuation, or the final part of the text.
     const sentenceRegex = /([^\.!?]+(?:[\.!?](?=\s+|$)|$))/g;
     let matches;
     const sentenceChunks: { text: string, originalStartIndex: number }[] = [];
@@ -190,14 +183,12 @@ export function ImmersiveReaderTool() {
       sentenceChunks.push({ text: matches[0], originalStartIndex: matches.index });
       lastIndex = matches.index + matches[0].length;
     }
-    // If there's remaining text (e.g., no punctuation at the end)
     if (lastIndex < text.length) {
       sentenceChunks.push({ text: text.substring(lastIndex), originalStartIndex: lastIndex });
     }
-    if (sentenceChunks.length === 0 && text.trim().length > 0) { // Handle single block of text with no sentence-ending punctuation
+    if (sentenceChunks.length === 0 && text.trim().length > 0) {
       sentenceChunks.push({ text: text, originalStartIndex: 0 });
     }
-
 
     sentenceChunks.forEach(chunk => {
       const sentenceText = chunk.text;
@@ -219,7 +210,6 @@ export function ImmersiveReaderTool() {
     return elements;
   }, []);
 
-
   useEffect(() => {
     const textToParse = toolMode === 'genie' ? (processedText.trim() || inputText.trim()) : '';
     if (toolMode === 'genie') {
@@ -227,7 +217,7 @@ export function ImmersiveReaderTool() {
       setParsedTextElements(newElements);
       wordRefs.current = new Array(newElements.length).fill(null);
     } else {
-      setParsedTextElements([]); // Clear for magic mode
+      setParsedTextElements([]); 
     }
     setCurrentWordCharIndex(-1);
     setCurrentSpokenWordInfo(null);
@@ -241,11 +231,9 @@ export function ImmersiveReaderTool() {
 
 
   useEffect(() => {
-    if (toolMode === 'genie' && isSpeaking && currentWordCharIndex !== -1 && parsedTextElements.length > 0) {
+    if (toolMode === 'genie' && isSpeaking && currentSpokenWordInfo && wordRefs.current.length > 0) {
         const currentElementIndex = parsedTextElements.findIndex(el => 
-            el.type === 'word' && 
-            el.originalStartIndex <= currentWordCharIndex && 
-            currentWordCharIndex < el.originalEndIndex
+            el.type === 'word' && el.originalStartIndex === currentSpokenWordInfo.originalStartIndex
         );
 
         if (currentElementIndex !== -1) {
@@ -259,7 +247,7 @@ export function ImmersiveReaderTool() {
             }
         }
     }
-  }, [currentWordCharIndex, parsedTextElements, isSpeaking, toolMode]);
+  }, [currentSpokenWordInfo, parsedTextElements, isSpeaking, toolMode]);
 
 
   useEffect(() => {
@@ -374,7 +362,7 @@ export function ImmersiveReaderTool() {
     utteranceRef.current.onend = () => { setIsSpeaking(false); setCurrentWordCharIndex(-1); setCurrentSpokenWordInfo(null); };
     utteranceRef.current.onerror = (event) => {
       if (event.error === 'interrupted') {
-        console.info("Speech synthesis interrupted:", event.error);
+        console.info("Speech synthesis error:", event.error);
       } else {
         console.error("Speech synthesis error:", event.error);
         toast({ title: "Erreur de lecture", description: `Impossible de lire le texte: ${event.error}`, variant: "destructive"});
@@ -417,8 +405,8 @@ export function ImmersiveReaderTool() {
         return;
       }
       const text = await navigator.clipboard.readText();
-      setInputText(prev => prev ? prev + '\n' + text : text);
-      setProcessedText('');
+      setInputText(prev => (prev ? prev + '\n' + text : text));
+      setProcessedText(''); // Clear processed text as input has changed
       toast({ title: "Texte collé !", description: "Le contenu du presse-papiers a été ajouté." });
     } catch (err) {
       console.error('Failed to read clipboard contents: ', err);
@@ -724,14 +712,14 @@ export function ImmersiveReaderTool() {
 
 
         {(inputText.trim() || processedText.trim()) && (
-          <ScrollArea
-              className="h-[300px] w-full rounded-md border"
-              style={toolMode === 'genie' ? themeStyles : {}} 
+           <ScrollArea 
+            className="h-[300px] w-full rounded-md border" 
+            style={toolMode === 'genie' ? themeStyles : {}}
           >
             <div
               className={cn(
                   "p-4 text-base leading-relaxed whitespace-pre-wrap max-w-none",
-                  toolMode === 'magique' && "prose dark:prose-invert" 
+                  toolMode === 'magique' && "prose dark:prose-invert"
                 )}
               style={toolMode === 'genie' ? textDisplayStyles : {}} 
             >
@@ -749,7 +737,7 @@ export function ImmersiveReaderTool() {
                       key={index}
                       ref={el => { wordRefs.current[index] = el; }}
                       className={cn(
-                          "transition-colors duration-150 ease-in-out", // For smoother word transitions
+                          "transition-colors duration-150 ease-in-out", 
                           isCurrentWord ? "bg-primary/50 text-primary-foreground rounded px-0.5" 
                                         : isInCurrentSentenceGroup ? "bg-primary/20 rounded" : ""
                       )}
@@ -782,6 +770,3 @@ export function ImmersiveReaderTool() {
     </Card>
   );
 }
-
-
-    
