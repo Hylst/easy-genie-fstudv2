@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { IntensitySelector } from '@/components/intensity-selector';
 import { CheckSquare, Square, Trash2, PlusCircle, Wand2, Mic, Loader2, ChevronDown, ChevronRight, Download, Mail, History, ListChecks, Save, BookOpenCheck, Eraser, BookmarkPlus, Info, BrainCircuit, Sparkles, TimerIcon, ClockIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { breakdownTask } from '@/ai/flows/breakdown-task-flow';
+import { breakdownTask, type BreakdownTaskOutput } from '@/ai/flows/breakdown-task-flow';
 import type { UITaskBreakerTask, TaskBreakerCustomPreset, CreateTaskBreakerCustomPresetDTO, TaskBreakerSavedBreakdown, CreateTaskBreakerSavedBreakdownDTO, CreateTaskBreakerTaskDTO, TaskSuggestionPreset, PreDecomposedTaskPreset, PreDecomposedTaskSubTask } from '@/types';
 import {
   DropdownMenu,
@@ -831,44 +831,41 @@ export function TaskBreakerTool() {
     setLoadingAITaskId(parentId);
 
     let contextForNewTasks = currentMainTaskContextRef.current;
-    if (!parentId) { // Breaking down the main task
+    if (!parentId) { 
       if (!mainTaskInputRef.current.trim()) {
         toast({ title: "Tâche principale vide", variant: "destructive" });
         setIsLoadingAI(false); setLoadingAITaskId(null); return;
       }
-      contextForNewTasks = mainTaskInputRef.current; // This becomes the new context for these sub-tasks
-      // If the input differs from the current context, it's a new "session" for this breakdown
+      contextForNewTasks = mainTaskInputRef.current; 
       if (currentMainTaskContextRef.current !== mainTaskInputRef.current) {
-          setCurrentMainTaskContext(mainTaskInputRef.current); // Set the new active context
-          // Clear tasks that belong to the *old* context, if any were displayed.
-          // The filter condition might need to be more nuanced if tasks can exist outside a context.
+          setCurrentMainTaskContext(mainTaskInputRef.current); 
           setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context !== mainTaskInputRef.current));
       } else {
-         // If same context, clear existing direct children before adding new AI ones to avoid duplicates.
          setAllUiTasksFlat(prev => prev.filter(t => !(t.parent_id === null && t.main_task_text_context === contextForNewTasks)));
       }
-    } else { // Breaking down an existing sub-task
+    } else { 
       const parentTask = allUiTasksFlat.find(t => t.id === parentId);
       if (!parentTask || !parentTask.main_task_text_context) {
         toast({ title: "Erreur de contexte parent", variant: "destructive" });
         setIsLoadingAI(false); setLoadingAITaskId(null); return;
       }
-      contextForNewTasks = parentTask.main_task_text_context; // Inherit context
-      // Clear existing children of this specific sub-task before adding new AI ones.
+      contextForNewTasks = parentTask.main_task_text_context; 
       setAllUiTasksFlat(prev => prev.filter(t => !(t.parent_id === parentId && t.main_task_text_context === contextForNewTasks)));
     }
 
     try {
-      const result = await breakdownTask({ mainTaskText: taskTextToBreak, intensityLevel: intensity });
+      const result: BreakdownTaskOutput = await breakdownTask({ mainTaskText: taskTextToBreak, intensityLevel: intensity });
       
       if (result.error) {
         let userMessage = "Le service de décomposition est temporairement indisponible. Veuillez réessayer plus tard.";
-        if (result.error === "INVALID_OUTPUT_STRUCTURE") {
+        if (result.error === "INVALID_OUTPUT_STRUCTURE" || result.error === "OUTPUT_VALIDATION_ERROR") {
           userMessage = "Le Génie a retourné une réponse inattendue. Veuillez réessayer.";
         } else if (result.error.startsWith("INPUT_VALIDATION_ERROR")) {
             userMessage = "Erreur de validation des données envoyées au Génie."
         } else if (result.error === "UNEXPECTED_ERROR_IN_WRAPPER"){
             userMessage = "Une erreur inattendue s'est produite avant d'appeler le Génie."
+        } else if (result.error === "API_ERROR_IN_FLOW") {
+            userMessage = "Une erreur de communication avec le Génie s'est produite.";
         }
         toast({ title: "Erreur du Génie IA", description: userMessage, variant: "destructive", duration: 7000 });
         setIsLoadingAI(false); setLoadingAITaskId(null); return;
@@ -877,7 +874,6 @@ export function TaskBreakerTool() {
       const parentTask = parentId ? allUiTasksFlat.find(t => t.id === parentId) : null;
       const currentDepth = parentTask ? parentTask.depth + 1 : 0;
 
-      // Ensure order for new tasks starts after existing siblings *for this context and parent*
       const existingSiblings = allUiTasksFlat.filter(t => t.parent_id === parentId && t.main_task_text_context === contextForNewTasks);
       let orderOffset = existingSiblings.length > 0 ? Math.max(...existingSiblings.map(s => s.order)) + 1 : 0;
 
@@ -890,7 +886,7 @@ export function TaskBreakerTool() {
             is_completed: false,
             depth: currentDepth,
             order: orderOffset + index,
-            estimated_time_minutes: subTaskSuggestion.estimated_time_minutes !== undefined ? subTaskSuggestion.estimated_time_minutes : null,
+            estimated_time_minutes: subTaskSuggestion.estimated_time_minutes ?? null,
           };
           const addedTask = await addTaskBreakerTask(taskDto);
           addedTasksFromAI.push({ ...addedTask, subTasks: [], isExpanded: false });
@@ -919,32 +915,29 @@ export function TaskBreakerTool() {
     setIsSubmitting(true);
 
     let contextForNewTask = currentMainTaskContextRef.current;
-    if (!parentId) { // Adding a direct sub-task to the main task
+    if (!parentId) { 
         if (!mainTaskInputRef.current.trim()) {
             toast({ title: "Tâche principale vide", variant: "destructive" });
             setIsSubmitting(false); return;
         }
-        contextForNewTask = mainTaskInputRef.current; // This is the context
-        // If the input differs from the current context, it's effectively a new "session"
+        contextForNewTask = mainTaskInputRef.current; 
         if (currentMainTaskContextRef.current !== mainTaskInputRef.current) {
             setCurrentMainTaskContext(mainTaskInputRef.current);
-            // Optionally, clear tasks from the old context if they are not meant to persist across context changes
             setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context !== mainTaskInputRef.current));
         }
-    } else { // Adding a child to an existing sub-task
+    } else { 
         const parentTask = allUiTasksFlat.find(t => t.id === parentId);
         if (!parentTask || !parentTask.main_task_text_context) {
             toast({ title: "Erreur de contexte parent", variant: "destructive" });
             setIsSubmitting(false); return;
         }
-        contextForNewTask = parentTask.main_task_text_context; // Inherit context
+        contextForNewTask = parentTask.main_task_text_context; 
     }
 
     try {
       const parentTask = parentId ? allUiTasksFlat.find(t => t.id === parentId) : null;
       const depth = parentTask ? parentTask.depth + 1 : 0;
 
-      // Ensure order for new task starts after existing siblings *for this context and parent*
       const existingSiblings = allUiTasksFlat.filter(t => t.parent_id === parentId && t.main_task_text_context === contextForNewTask);
       let order = existingSiblings.length > 0 ? Math.max(...existingSiblings.map(s => s.order)) + 1 : 0;
 
@@ -955,7 +948,7 @@ export function TaskBreakerTool() {
         is_completed: false,
         depth,
         order,
-        estimated_time_minutes: null, // Manual tasks start with no estimate
+        estimated_time_minutes: null, 
       };
       const addedTask = await addTaskBreakerTask(taskDto);
       setAllUiTasksFlat(prev => [...prev, {...addedTask, subTasks: [], isExpanded: false}]);
@@ -1002,8 +995,7 @@ export function TaskBreakerTool() {
     if (!user) { toast({ title: "Non connecté", variant: "destructive" }); return; }
     setIsSubmitting(true);
     try {
-      await deleteTaskBreakerTask(taskId); // This should handle recursive deletion in services if needed
-      // Optimistically remove the task and its descendants from the flat list
+      await deleteTaskBreakerTask(taskId); 
       const idsToDelete = new Set<string>();
       const findDescendants = (currentId: string) => {
         idsToDelete.add(currentId);
@@ -1017,7 +1009,7 @@ export function TaskBreakerTool() {
     } catch (error) {
       console.error("Error deleting task:", error);
       toast({ title: "Erreur de suppression", description: (error as Error).message, variant: "destructive" });
-      await fetchTaskData({ preserveActiveState: true }); // Re-fetch to ensure consistency
+      await fetchTaskData({ preserveActiveState: true }); 
     } finally {
       setIsSubmitting(false);
     }
@@ -1110,16 +1102,15 @@ export function TaskBreakerTool() {
     }
     setIsSubmitting(true);
     const contextToSave = currentMainTaskContextRef.current;
-    // Create a serializable version of the task tree including estimates
     const serializeTree = (nodes: UITaskBreakerTask[]): any[] => {
         return nodes.map(node => ({
-            id: node.id, // Keep ID for potential future rehydration if needed, though not strictly used by current load
+            id: node.id, 
             text: node.text,
             is_completed: node.is_completed,
             estimated_time_minutes: node.estimated_time_minutes,
-            order: node.order, // Save order
-            depth: node.depth, // Save depth
-            parent_id: node.parent_id, // Save parent_id
+            order: node.order, 
+            depth: node.depth, 
+            parent_id: node.parent_id, 
             subTasks: node.subTasks ? serializeTree(node.subTasks) : []
         }));
     };
@@ -1167,10 +1158,10 @@ export function TaskBreakerTool() {
       if (subTasksToLoadNext && subTasksToLoadNext.length > 0) {
         const childTasks = await addTasksRecursively(subTasksToLoadNext, addedDbTask.id, currentDepth + 1, targetContext, accumulatedNewExpandedStates);
         const currentAdded = addedTasksBatch.find(t => t.id === addedDbTask.id);
-        if(currentAdded) currentAdded.subTasks = childTasks; // This subTasks here is just for the immediate return, allUiTasksFlat handles the global state
+        if(currentAdded) currentAdded.subTasks = childTasks; 
       }
     }
-    return addedTasksBatch; // Returns the top-level tasks added in this call with their *direct* children for this level.
+    return addedTasksBatch; 
   };
 
   const handleLoadFromHistory = async (entry: TaskBreakerSavedBreakdown) => {
@@ -1184,7 +1175,6 @@ export function TaskBreakerTool() {
     try {
         const parsedSubTasks: UITaskBreakerTask[] = JSON.parse(entry.sub_tasks_json || "[]");
         
-        // Add tasks recursively and collect all of them (including nested) into a flat list for allUiTasksFlat
         const addAndCollectTasks = async (tasks: UITaskBreakerTask[], parentId: string | null, depth: number): Promise<UITaskBreakerTask[]> => {
             let collected: UITaskBreakerTask[] = [];
             for (let i = 0; i < tasks.length; i++) {
@@ -1195,11 +1185,11 @@ export function TaskBreakerTool() {
                     main_task_text_context: newMainTaskContext,
                     is_completed: taskToLoad.is_completed || false,
                     depth: depth,
-                    order: i, // Use index as order for loaded tasks
+                    order: i, 
                     estimated_time_minutes: taskToLoad.estimated_time_minutes ?? null,
                 };
                 const addedDbTask = await addTaskBreakerTask(dto);
-                newExpandedStatesForLoad[addedDbTask.id] = true; // Expand all loaded tasks by default
+                newExpandedStatesForLoad[addedDbTask.id] = true; 
                 const newUiTask: UITaskBreakerTask = { ...addedDbTask, subTasks: [], isExpanded: true };
                 collected.push(newUiTask);
 
@@ -1248,8 +1238,8 @@ export function TaskBreakerTool() {
 
   const handleLoadTaskSuggestion = (preset: TaskSuggestionPreset) => {
     setMainTaskInput(preset.taskText);
-    setCurrentMainTaskContext(''); // Clear current context to indicate it's a new setup
-    setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context === '')); // Keep only unassigned tasks if any
+    setCurrentMainTaskContext(''); 
+    setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context === '')); 
     setTaskTree([]);
     setExpandedStates({});
     mainTaskTextareaRef.current?.focus();
@@ -1277,7 +1267,7 @@ export function TaskBreakerTool() {
                     is_completed: taskToLoad.is_completed || false,
                     depth: depth,
                     order: i,
-                    estimated_time_minutes: null, // Default to null for presets
+                    estimated_time_minutes: null, 
                 };
                 const addedDbTask = await addTaskBreakerTask(dto);
                 newExpandedStatesForLoad[addedDbTask.id] = true;
@@ -1312,10 +1302,17 @@ export function TaskBreakerTool() {
 };
 
  const handleClearCurrentTask = async () => {
-    if (!user) { toast({ title: "Non connecté", variant: "destructive"}); setShowClearTaskDialog(false); return; }
+    if (!user) {
+      toast({ title: "Non connecté", variant: "destructive"});
+      setShowClearTaskDialog(false);
+      return;
+    }
 
     const contextToDelete = currentMainTaskContextRef.current;
-    if (!contextToDelete && !mainTaskInputRef.current.trim() && taskTree.length === 0) {
+    const mainInputText = mainTaskInputRef.current.trim();
+
+    // Check if there's anything to clear at all (either a saved context or text in the input field)
+    if (!contextToDelete && !mainInputText) {
       toast({ title: "Rien à effacer", description: "Aucune tâche principale ou décomposition active.", variant: "default"});
       setShowClearTaskDialog(false);
       return;
@@ -1324,24 +1321,32 @@ export function TaskBreakerTool() {
     setIsSubmitting(true);
     try {
       if (contextToDelete) {
-          const tasksInContext = allUiTasksFlat.filter(t => t.main_task_text_context === contextToDelete);
-          for (const task of tasksInContext) {
+          // Get root tasks for the current context
+          const rootTasksInContext = allUiTasksFlat.filter(
+            t => t.main_task_text_context === contextToDelete && t.parent_id === null
+          );
+
+          for (const task of rootTasksInContext) {
+            // Deleting a root task should trigger recursive deletion of its children by the service layer.
             await deleteTaskBreakerTask(task.id);
           }
+          // After DB operations, filter out all tasks associated with the deleted context from the UI state.
+          setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context !== contextToDelete));
       }
-
+      // Always clear the main input field and current context state
       setMainTaskInput('');
       setCurrentMainTaskContext('');
-      setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context !== contextToDelete));
-      setExpandedStates({});
+      setExpandedStates({}); // Reset expansion states for any new/loaded task
 
       setShowClearTaskDialog(false);
       toast({ title: "Tâche actuelle effacée", variant: "destructive"});
       mainTaskTextareaRef.current?.focus();
+
     } catch (error) {
       console.error("Error clearing current task:", error);
       toast({ title: "Erreur d'effacement", description:(error as Error).message, variant: "destructive"});
-      await fetchTaskData();
+      // Re-fetch data to ensure UI consistency after error
+      await fetchTaskData({preserveActiveState: false});
     } finally {
       setIsSubmitting(false);
     }
@@ -1414,7 +1419,7 @@ export function TaskBreakerTool() {
     let totalLeaves = 0;
     const children = allUiTasksFlat.filter(t => t.parent_id === task.id && t.main_task_text_context === task.main_task_text_context);
 
-    if (children.length === 0) { // Leaf node
+    if (children.length === 0) { 
         totalLeaves = 1;
         if (task.is_completed) {
             completedLeaves = 1;
@@ -1445,12 +1450,10 @@ export function TaskBreakerTool() {
 
     const children = allUiTasksFlat.filter(t => t.parent_id === taskId && t.main_task_text_context === task.main_task_text_context);
 
-    if (children.length === 0) { // Leaf node
+    if (children.length === 0) { 
         return task.estimated_time_minutes || 0;
     }
     
-    // If parent has an estimate, and NO children have estimates, use parent's.
-    // Otherwise, sum of children overrides parent's direct estimate for cumulative display.
     let childrenHaveEstimates = false;
     let sumOfChildren = 0;
     for(const child of children) {
