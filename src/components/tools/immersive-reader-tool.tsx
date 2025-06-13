@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { IntensitySelector } from '@/components/intensity-selector';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText, Sparkles, Brain, ClipboardPaste, Mic, Save, Trash2 } from 'lucide-react';
+import { Play, StopCircle, Loader2, Wand2, Settings2, Info, BookOpenText as BookOpenTextIcon, Sparkles, Brain, ClipboardPaste, Mic, Save, Trash2 } from 'lucide-react'; // Renamed to BookOpenTextIcon
 import { useToast } from "@/hooks/use-toast";
 import { simplifyText } from '@/ai/flows/simplify-text-flow';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,7 +34,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"; // Removed AlertDialogTrigger as it's not directly used here.
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -42,9 +42,9 @@ import { Separator } from '../ui/separator';
 
 
 const DEFAULT_SPEECH_RATE_GENIE = 1;
-const IMMERSIVE_READER_SETTINGS_KEY = "easyGenieImmersiveReaderSettings_v1";
+const IMMERSIVE_READER_SETTINGS_KEY = "easyGenieImmersiveReaderSettings_v2"; // Incremented version for new structure
 const IMMERSIVE_READER_MODE_KEY = "easyGenieImmersiveReaderMode_v1";
-const DISPLAY_PRESETS_STORAGE_KEY = "easyGenieImmersiveReaderDisplayPresets_v1";
+const DISPLAY_PRESETS_STORAGE_KEY = "easyGenieImmersiveReaderDisplayPresets_v2"; // Incremented version
 
 const VALID_FONT_FAMILIES: ImmersiveReaderSettings['fontFamily'][] = ['System', 'Sans-Serif', 'Serif', 'OpenDyslexic'];
 
@@ -84,7 +84,7 @@ export function ImmersiveReaderTool() {
   const recognitionRef = useRef<any>(null);
 
   const [displayPresets, setDisplayPresets] = useState<ImmersiveReaderDisplayPreset[]>([]);
-  const [isLoadingUserPresets, setIsLoadingUserPresets] = useState<boolean>(false); // Added for consistency if fetching from DB later
+  const [isLoadingUserPresets, setIsLoadingUserPresets] = useState<boolean>(false);
   const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
   const [presetToDelete, setPresetToDelete] = useState<string | null>(null);
@@ -115,15 +115,25 @@ export function ImmersiveReaderTool() {
       const savedDisplayPresets = localStorage.getItem(DISPLAY_PRESETS_STORAGE_KEY);
       if (savedDisplayPresets) {
         try { 
-          const parsedPresets = JSON.parse(savedDisplayPresets) as ImmersiveReaderDisplayPreset[];
-          // Filter out presets with empty or whitespace-only names upon loading
-          const validPresets = parsedPresets.filter(p => p.name && p.name.trim() !== "");
-          setDisplayPresets(validPresets);
+          const parsedItems = JSON.parse(savedDisplayPresets);
+          if (Array.isArray(parsedItems)) {
+            const validPresets = parsedItems.filter(
+              (p): p is ImmersiveReaderDisplayPreset =>
+                p &&
+                typeof p.name === 'string' &&
+                p.name.trim() !== "" &&
+                typeof p.settings === 'object' && p.settings !== null &&
+                VALID_FONT_FAMILIES.includes(p.settings.fontFamily) // Example of checking settings validity
+            );
+            setDisplayPresets(validPresets);
+          } else {
+            setDisplayPresets([]); 
+          }
         }
         catch (e) { 
-          console.error("Failed to parse display presets:", e); 
+          console.error("Failed to parse display presets from localStorage:", e); 
           localStorage.removeItem(DISPLAY_PRESETS_STORAGE_KEY); 
-          setDisplayPresets([]); // Initialize with empty array if parsing fails
+          setDisplayPresets([]);
         }
       }
     }
@@ -139,7 +149,9 @@ export function ImmersiveReaderTool() {
 
   const saveDisplayPresetsToLocalStorage = useCallback((presets: ImmersiveReaderDisplayPreset[]) => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem(DISPLAY_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+      // Filter one last time before saving to ensure no empty names sneak in
+      const presetsToSave = presets.filter(p => p.name && p.name.trim() !== "");
+      localStorage.setItem(DISPLAY_PRESETS_STORAGE_KEY, JSON.stringify(presetsToSave));
     }
   }, []);
 
@@ -158,7 +170,7 @@ export function ImmersiveReaderTool() {
     setCurrentWordCharIndex(-1);
     if (synthesis?.speaking) synthesis.cancel();
     setIsSpeaking(false);
-     wordRefs.current = []; // Reset refs when text changes
+     wordRefs.current = [];
   }, [inputText, processedText, synthesis]);
 
   useEffect(() => {
@@ -393,7 +405,7 @@ export function ImmersiveReaderTool() {
     fontFamily: displaySettings.fontFamily === 'System' ? 'inherit' 
               : displaySettings.fontFamily === 'Sans-Serif' ? 'Arial, Helvetica, sans-serif'
               : displaySettings.fontFamily === 'Serif' ? 'Georgia, "Times New Roman", serif'
-              : `'${displaySettings.fontFamily}'`, // Ensure custom fonts are quoted
+              : `'${displaySettings.fontFamily}'`, 
     lineHeight: displaySettings.lineHeight,
     letterSpacing: `${displaySettings.letterSpacing}px`,
     wordSpacing: `${displaySettings.wordSpacing}px`,
@@ -411,7 +423,7 @@ export function ImmersiveReaderTool() {
         <div className="flex justify-between items-start">
             <div>
                 <CardTitle className="text-3xl font-bold text-primary flex items-center gap-2">
-                <BookOpenText className="h-8 w-8" /> Lecteur Immersif
+                <BookOpenTextIcon className="h-8 w-8" /> Lecteur Immersif
                 {toolMode === 'magique' ? <Sparkles className="h-6 w-6 text-accent" /> : <Brain className="h-6 w-6 text-accent" />}
                 </CardTitle>
                 <CardDescription>
@@ -555,7 +567,7 @@ export function ImmersiveReaderTool() {
                                         {!isLoadingUserPresets && displayPresets.length === 0 && (
                                           <p className="p-2 text-sm text-muted-foreground">Aucun préréglage.</p>
                                         )}
-                                        {!isLoadingUserPresets && displayPresets.filter(p => p.name && p.name.trim() !== "").map(p => (
+                                        {!isLoadingUserPresets && displayPresets.map(p => (
                                           <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
                                         ))}
                                       </SelectContent>
@@ -567,7 +579,7 @@ export function ImmersiveReaderTool() {
                                   {displayPresets.length > 0 && (
                                     <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-1">
                                       <Label className="text-xs text-muted-foreground">Mes Préréglages :</Label>
-                                      {displayPresets.filter(p => p.name && p.name.trim() !== "").map(p => (
+                                      {displayPresets.map(p => (
                                         <div key={p.name} className="flex items-center justify-between text-sm p-1 hover:bg-muted/30 rounded-md">
                                           <span className="truncate cursor-default" title={p.name}>{p.name}</span>
                                           <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => setPresetToDelete(p.name)}>
@@ -641,19 +653,18 @@ export function ImmersiveReaderTool() {
         {(processedText || inputText) && (
           <ScrollArea
               className="h-[300px] w-full rounded-md border"
-              style={themeStyles} // Appliquer les styles de thème au ScrollArea lui-même
+              style={themeStyles} 
           >
             <div
               className={cn(
                   "p-4 text-base leading-relaxed whitespace-pre-wrap max-w-none",
-                  toolMode === 'magique' && "prose dark:prose-invert" // Appliquer prose uniquement en mode magique
+                  toolMode === 'magique' && "prose dark:prose-invert" 
                 )}
-              style={toolMode === 'genie' ? textDisplayStyles : {}} // Appliquer les styles typographiques en mode génie
+              style={toolMode === 'genie' ? textDisplayStyles : {}} 
             >
               {toolMode === 'genie' && words.length > 0 ? (
                 words.map((word, index) => {
                   let wordStartIndex = 0;
-                  // Calculer l'index de début du mot actuel dans le texte complet
                   for (let k = 0; k < index; k++) { wordStartIndex += words[k].length; }
 
                   const isCurrentWord = currentWordCharIndex !== -1 &&
@@ -665,7 +676,7 @@ export function ImmersiveReaderTool() {
                       key={index}
                       ref={el => { wordRefs.current[index] = el; }}
                       className={cn(
-                          word.trim() === '' ? '' : 'transition-colors duration-100', // éviter de styler les espaces
+                          word.trim() === '' ? '' : 'transition-colors duration-100',
                           isCurrentWord ? "bg-primary/50 dark:bg-primary/60 rounded px-0.5" : ""
                       )}
                     >
@@ -698,3 +709,5 @@ export function ImmersiveReaderTool() {
   );
 }
 
+
+    
