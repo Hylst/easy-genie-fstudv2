@@ -37,6 +37,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger, // Added missing import
 } from "@/components/ui/alert-dialog";
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -805,16 +806,6 @@ export function TaskBreakerTool() {
     }, 1500);
   }, [user, toast, fetchTaskData]);
 
-  const handleTimeEstimateChange = (taskId: string, value: string) => {
-    const newTime = value === '' ? null : parseInt(value, 10);
-    if (value === '' || (!isNaN(newTime!) && newTime! >= 0)) {
-        setAllUiTasksFlat(prevFlat => prevFlat.map(node =>
-            node.id === taskId ? { ...node, estimated_time_minutes: newTime } : node
-        )); // Optimistic UI update
-        handleDebouncedTimeEstimateChange(taskId, newTime);
-    }
-  };
-
 
   const handleGenieBreakdown = async (taskTextToBreak: string, parentId: string | null) => {
     if (!user) { toast({ title: "Non connecté", variant: "destructive" }); return; }
@@ -859,10 +850,13 @@ export function TaskBreakerTool() {
             userMessage = "Une erreur inattendue s'est produite avant d'appeler le Génie."
         } else if (result.error === "API_ERROR_IN_FLOW") {
             userMessage = "Une erreur de communication avec le Génie s'est produite.";
+        } else if (result.error === "SERVICE_UNAVAILABLE") {
+            userMessage = "Le service IA est actuellement surchargé. Veuillez réessayer plus tard.";
         }
         toast({ title: "Erreur du Génie IA", description: userMessage, variant: "destructive", duration: 7000 });
         setIsLoadingAI(false); setLoadingAITaskId(null); return;
       }
+
 
       const parentTask = parentId ? allUiTasksFlat.find(t => t.id === parentId) : null;
       const currentDepth = parentTask ? parentTask.depth + 1 : 0;
@@ -1309,7 +1303,7 @@ export function TaskBreakerTool() {
           );
 
           for (const task of rootTasksInContext) {
-            await deleteTaskBreakerTask(task.id); // This will trigger recursive deletion in service
+            await deleteTaskBreakerTask(task.id); 
           }
           setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context !== contextToDelete));
       }
@@ -1442,6 +1436,8 @@ export function TaskBreakerTool() {
         sumOfChildren += childTotalTime;
     }
 
+    // If children have estimates, sum them. Otherwise, use parent's estimate.
+    // This favors explicit estimates on children over parent if any child is estimated.
     if (childrenHaveEstimates) {
         return sumOfChildren;
     } else {
@@ -1454,11 +1450,18 @@ export function TaskBreakerTool() {
     const [localTimeEstimate, setLocalTimeEstimate] = useState(task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString());
 
     useEffect(() => {
-      setLocalTaskText(task.text);
+        if (task.text !== localTaskText) {
+            setLocalTaskText(task.text);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [task.text]);
     
     useEffect(() => {
-        setLocalTimeEstimate(task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString());
+        const currentEstimateString = task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString();
+        if (currentEstimateString !== localTimeEstimate) {
+            setLocalTimeEstimate(currentEstimateString);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [task.estimated_time_minutes]);
 
 
@@ -1469,20 +1472,22 @@ export function TaskBreakerTool() {
     
     const handleLocalTimeEstimateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
-        setLocalTimeEstimate(value);
+        setLocalTimeEstimate(value); // Update local state immediately for responsiveness
         const numValue = value === '' ? null : parseInt(value, 10);
         if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
             handleDebouncedTimeEstimateChange(task.id, numValue);
         }
     };
 
-
     const isCurrentlyLoadingAI = isLoadingAI && loadingAITaskId === task.id;
     const { completedLeaves, totalLeaves } = toolMode === 'genie' ? calculateProgress(task) : { completedLeaves: 0, totalLeaves: 0 };
     const progressPercentage = totalLeaves > 0 ? (completedLeaves / totalLeaves) * 100 : (task.is_completed ? 100 : 0);
     const hasChildren = allUiTasksFlat.some(t => t.parent_id === task.id && t.main_task_text_context === task.main_task_text_context);
-    const totalSubTaskTime = (toolMode === 'genie' && showTimeEstimates) ? calculateTotalEstimatedTime(task.id) : 0;
-
+    
+    const directEstimateFormatted = (toolMode === 'genie' && showTimeEstimates && task.estimated_time_minutes && task.estimated_time_minutes > 0) ? `Est: ${formatTime(task.estimated_time_minutes)}` : "";
+    const cumulativeEstimate = (toolMode === 'genie' && showTimeEstimates) ? calculateTotalEstimatedTime(task.id) : 0;
+    const cumulativeEstimateFormatted = (cumulativeEstimate > 0 && cumulativeEstimate !== task.estimated_time_minutes) ? ` / ∑ ${formatTime(cumulativeEstimate)}` : "";
+    const displayTimeInfo = (directEstimateFormatted || cumulativeEstimateFormatted) ? ` (${directEstimateFormatted}${cumulativeEstimateFormatted})` : "";
 
     return (
       <div style={{ marginLeft: `${task.depth * 15}px` }} className="mb-1.5">
@@ -1512,7 +1517,10 @@ export function TaskBreakerTool() {
             onChange={handleLocalTextChange}
             className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed && !hasChildren ? 'line-through text-muted-foreground' : ''} transition-all duration-200 ease-in-out hover:shadow-inner hover:animate-subtle-shake transform hover:scale-[1.005]`}
             disabled={isSubmitting || isLoadingAI || !user}
+            aria-label={`Texte de la tâche ${task.text}`}
           />
+          {displayTimeInfo && <span className="text-xs text-muted-foreground whitespace-nowrap ml-1">{displayTimeInfo}</span>}
+
           {toolMode === 'genie' && showTimeEstimates && (
             <div className="flex items-center gap-1 ml-2 shrink-0">
                 <Input
@@ -1523,12 +1531,8 @@ export function TaskBreakerTool() {
                     className="h-6 w-16 text-xs p-1 text-right"
                     placeholder="min"
                     disabled={isSubmitting || isLoadingAI || !user}
+                    aria-label={`Estimation en minutes pour ${task.text}`}
                 />
-                {totalSubTaskTime > 0 && task.estimated_time_minutes !== totalSubTaskTime && (
-                     <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        (∑ {formatTime(totalSubTaskTime)})
-                     </span>
-                )}
             </div>
           )}
           <TooltipProvider>
@@ -1599,8 +1603,6 @@ export function TaskBreakerTool() {
           </TooltipProvider>
         </div>
         )}
-
-        {/* Recursive rendering for children, ensuring correct key and passing task prop */}
         {task.isExpanded && task.subTasks && task.subTasks.length > 0 && (
           <div className="mt-2">
             {task.subTasks.map(childTask => (
@@ -2087,3 +2089,4 @@ export function TaskBreakerTool() {
     </TooltipProvider>
   );
 }
+
