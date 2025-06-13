@@ -37,7 +37,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added missing import
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -748,6 +748,7 @@ export function TaskBreakerTool() {
     return () => {
       if (recognitionRef.current) recognitionRef.current.stop();
       if (timeEstimateDebounceRef.current) clearTimeout(timeEstimateDebounceRef.current);
+       if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
     };
   }, [toast]);
 
@@ -795,7 +796,7 @@ export function TaskBreakerTool() {
       try {
         const updatedTask = await updateTaskBreakerTask(taskId, { estimated_time_minutes: newTime });
         setAllUiTasksFlat(prevFlat => prevFlat.map(t => t.id === taskId ? {...t, ...updatedTask} : t));
-        toast({ title: "Estimation de temps sauvegardée" });
+        // toast({ title: "Estimation de temps sauvegardée" }); // Peut-être un peu trop verbeux
       } catch (error) {
         console.error("Error saving time estimate:", error);
         toast({ title: "Erreur de sauvegarde (temps)", description: (error as Error).message, variant: "destructive"});
@@ -850,8 +851,8 @@ export function TaskBreakerTool() {
             userMessage = "Une erreur inattendue s'est produite avant d'appeler le Génie."
         } else if (result.error === "API_ERROR_IN_FLOW") {
             userMessage = "Une erreur de communication avec le Génie s'est produite.";
-        } else if (result.error === "SERVICE_UNAVAILABLE") {
-            userMessage = "Le service IA est actuellement surchargé. Veuillez réessayer plus tard.";
+        } else if (result.error === "SERVICE_UNAVAILABLE" || result.error === "SERVICE_UNAVAILABLE_IN_FLOW") {
+            userMessage = "Le service IA est actuellement surchargé ou indisponible. Veuillez réessayer plus tard.";
         }
         toast({ title: "Erreur du Génie IA", description: userMessage, variant: "destructive", duration: 7000 });
         setIsLoadingAI(false); setLoadingAITaskId(null); return;
@@ -1090,7 +1091,6 @@ export function TaskBreakerTool() {
     setIsSubmitting(true);
     const contextToSave = currentMainTaskContextRef.current;
     
-    // Sérialiser uniquement les tâches du contexte actuel
     const tasksForCurrentContext = allUiTasksFlat.filter(t => t.main_task_text_context === contextToSave);
     const treeToSaveForHistory = buildTree(tasksForCurrentContext, null);
 
@@ -1098,7 +1098,7 @@ export function TaskBreakerTool() {
         const dto: CreateTaskBreakerSavedBreakdownDTO = {
             name: currentBreakdownName,
             main_task_text: contextToSave,
-            sub_tasks_json: JSON.stringify(treeToSaveForHistory), // Sauvegarder l'arbre filtré
+            sub_tasks_json: JSON.stringify(treeToSaveForHistory), 
             intensity_on_save: intensity,
         };
         await addTaskBreakerSavedBreakdown(dto);
@@ -1303,12 +1303,13 @@ export function TaskBreakerTool() {
           );
 
           for (const task of rootTasksInContext) {
-            await deleteTaskBreakerTask(task.id); 
+            await deleteTaskBreakerTask(task.id); // This will recursively delete children in services
           }
           setAllUiTasksFlat(prev => prev.filter(t => t.main_task_text_context !== contextToDelete));
       }
       setMainTaskInput('');
       setCurrentMainTaskContext('');
+      setTaskTree([]); // Clear the tree display
       setExpandedStates({});
 
       setShowClearTaskDialog(false);
@@ -1436,8 +1437,6 @@ export function TaskBreakerTool() {
         sumOfChildren += childTotalTime;
     }
 
-    // If children have estimates, sum them. Otherwise, use parent's estimate.
-    // This favors explicit estimates on children over parent if any child is estimated.
     if (childrenHaveEstimates) {
         return sumOfChildren;
     } else {
@@ -1453,16 +1452,14 @@ export function TaskBreakerTool() {
         if (task.text !== localTaskText) {
             setLocalTaskText(task.text);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [task.text]);
+    }, [task.text, localTaskText]); // Added localTaskText
     
     useEffect(() => {
         const currentEstimateString = task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString();
         if (currentEstimateString !== localTimeEstimate) {
             setLocalTimeEstimate(currentEstimateString);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [task.estimated_time_minutes]);
+    }, [task.estimated_time_minutes, localTimeEstimate]); // Added localTimeEstimate
 
 
     const handleLocalTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1472,7 +1469,7 @@ export function TaskBreakerTool() {
     
     const handleLocalTimeEstimateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
-        setLocalTimeEstimate(value); // Update local state immediately for responsiveness
+        setLocalTimeEstimate(value); 
         const numValue = value === '' ? null : parseInt(value, 10);
         if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
             handleDebouncedTimeEstimateChange(task.id, numValue);
@@ -1515,7 +1512,7 @@ export function TaskBreakerTool() {
           <Input
             value={localTaskText}
             onChange={handleLocalTextChange}
-            className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed && !hasChildren ? 'line-through text-muted-foreground' : ''} transition-all duration-200 ease-in-out hover:shadow-inner hover:animate-subtle-shake transform hover:scale-[1.005]`}
+            className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed && !hasChildren ? 'line-through text-muted-foreground' : ''}`}
             disabled={isSubmitting || isLoadingAI || !user}
             aria-label={`Texte de la tâche ${task.text}`}
           />
