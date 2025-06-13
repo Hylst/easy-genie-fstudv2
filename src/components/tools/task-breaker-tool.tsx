@@ -37,7 +37,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Assurez-vous que c'est bien importé
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -677,7 +677,7 @@ export function TaskBreakerTool() {
 
       if (newContextToSet !== undefined) {
         setCurrentMainTaskContext(newContextToSet);
-        setMainTaskInput(newContextToSet); // Ensure main input field reflects newly loaded context
+        setMainTaskInput(newContextToSet); 
         setExpandedStates(currentExpandedFromStorage);
       } else if (!preserveActiveState) {
         const latestContextTask = dbTasks
@@ -687,15 +687,13 @@ export function TaskBreakerTool() {
         const contextToLoad = latestContextTask ? latestContextTask.main_task_text_context || '' : '';
         setCurrentMainTaskContext(contextToLoad);
 
-        if (!mainTaskInputRef.current && contextToLoad) { // Only set if main input is empty
+        if (!mainTaskInputRef.current && contextToLoad) { 
           setMainTaskInput(contextToLoad);
         } else if (!mainTaskInputRef.current && !contextToLoad){
            setMainTaskInput('');
         }
-        // If preserving active state, don't touch mainTaskInput if it has content
         setExpandedStates(currentExpandedFromStorage);
-      } else { // preserveActiveState is true
-        // Don't change mainTaskInput or currentMainTaskContext unless newContextToSet was provided
+      } else { 
         setExpandedStates(currentExpandedFromStorage);
       }
 
@@ -704,7 +702,7 @@ export function TaskBreakerTool() {
       toast({ title: "Erreur de chargement", description: (error as Error).message, variant: "destructive" });
     }
     finally { setIsLoadingData(false); }
-  }, [user, toast, isOnline]); // Removed mainTaskInputRef from dependencies as it's a ref
+  }, [user, toast, isOnline]); 
 
 
   useEffect(() => {
@@ -725,7 +723,7 @@ export function TaskBreakerTool() {
 
     const tasksWithCurrentExpansion = tasksForCurrentContext.map(t => ({
         ...t,
-        isExpanded: expandedStates[t.id] || false // Use current expandedStates
+        isExpanded: expandedStates[t.id] || false 
     }));
     const newTree = buildTree(tasksWithCurrentExpansion, null);
     setTaskTree(newTree);
@@ -771,11 +769,12 @@ export function TaskBreakerTool() {
     setIsListening(prev => !prev);
   };
 
-  const handleDebouncedChange = useCallback(async (taskId: string, field: 'text' | 'estimated_time_minutes', value: string | number | null, debounceRef: React.MutableRefObject<Record<string, NodeJS.Timeout>>) => {
-    if (debounceRef.current[taskId]) {
+  const handleDebouncedChange = useCallback(async (taskId: string, field: 'text' | 'estimated_time_minutes', value: string | number | null, debounceRef: React.MutableRefObject<Record<string, NodeJS.Timeout>>, forceSave: boolean = false) => {
+    if (debounceRef.current[taskId] && !forceSave) {
         clearTimeout(debounceRef.current[taskId]);
     }
-    debounceRef.current[taskId] = setTimeout(async () => {
+
+    const saveFunction = async () => {
         if (!user) return;
         setIsSubmitting(true);
         try {
@@ -784,7 +783,7 @@ export function TaskBreakerTool() {
             setAllUiTasksFlat(prevFlat =>
                 prevFlat.map(t =>
                     t.id === taskId
-                        ? { ...t, [field]: value, updated_at: updatedDbTask.updated_at }
+                        ? { ...t, ...updatedDbTask, subTasks: t.subTasks, isExpanded: t.isExpanded } // Preserve UI state
                         : t
                 )
             );
@@ -796,7 +795,13 @@ export function TaskBreakerTool() {
             setIsSubmitting(false);
             delete debounceRef.current[taskId];
         }
-    }, 1000);
+    };
+
+    if (forceSave) {
+        await saveFunction();
+    } else {
+        debounceRef.current[taskId] = setTimeout(saveFunction, 1200);
+    }
   }, [user, toast, fetchTaskData]);
 
 
@@ -869,7 +874,7 @@ export function TaskBreakerTool() {
             estimated_time_minutes: subTaskSuggestion.estimated_time_minutes ?? null,
           };
           const addedTask = await addTaskBreakerTask(taskDto);
-          addedTasksFromAI.push({ ...addedTask, subTasks: [], isExpanded: true }); // Expand new AI tasks by default
+          addedTasksFromAI.push({ ...addedTask, subTasks: [], isExpanded: true }); 
       }
 
       setAllUiTasksFlat(prev => [...prev, ...addedTasksFromAI]);
@@ -931,7 +936,7 @@ export function TaskBreakerTool() {
         estimated_time_minutes: null, 
       };
       const addedTask = await addTaskBreakerTask(taskDto);
-      setAllUiTasksFlat(prev => [...prev, {...addedTask, subTasks: [], isExpanded: true}]); // Expand parent if adding child
+      setAllUiTasksFlat(prev => [...prev, {...addedTask, subTasks: [], isExpanded: true}]); 
 
       if (parentId) {
         setNewChildSubTaskText(prev => ({ ...prev, [parentId]: '' }));
@@ -1165,12 +1170,10 @@ export function TaskBreakerTool() {
 
                 if (taskToLoad.subTasks && taskToLoad.subTasks.length > 0) {
                     const children = await addAndCollectTasks(taskToLoad.subTasks, addedDbTask.id, depth + 1);
-                    // collected = collected.concat(children); // This was potentially adding children multiple times
-                    newUiTask.subTasks = children; // Assign children to the parent
-                    collected.push(...children.filter(c => !collected.find(coll => coll.id === c.id))); // Add children if not already there
+                    newUiTask.subTasks = children;
+                    collected.push(...children.filter(c => !collected.find(coll => coll.id === c.id))); 
                 }
             }
-            // Filter duplicates based on id before returning
             return Array.from(new Map(collected.map(item => [item.id, item])).values());
         };
         
@@ -1249,7 +1252,6 @@ export function TaskBreakerTool() {
 
                 if (taskToLoad.subTasks && taskToLoad.subTasks.length > 0) {
                     const children = await addAndCollectTasks(taskToLoad.subTasks, addedDbTask.id, depth + 1);
-                    // collected = collected.concat(children);
                     newUiTask.subTasks = children;
                     collected.push(...children.filter(c => !collected.find(coll => coll.id === c.id)));
                 }
@@ -1445,57 +1447,25 @@ export function TaskBreakerTool() {
   const RenderTaskNode: React.FC<{ task: UITaskBreakerTask }> = React.memo(({ task }) => {
     const textInputRef = useRef<HTMLInputElement>(null);
     const timeInputRef = useRef<HTMLInputElement>(null);
+    const [isTextFocused, setIsTextFocused] = useState(false);
+    const [isTimeFocused, setIsTimeFocused] = useState(false);
+
 
     useEffect(() => {
-        if (textInputRef.current && task.text !== textInputRef.current.value) {
+        if (textInputRef.current && task.text !== textInputRef.current.value && !isTextFocused) {
             textInputRef.current.value = task.text;
         }
-    }, [task.text]);
+    }, [task.text, isTextFocused]);
 
     useEffect(() => {
-        if (timeInputRef.current) {
+        if (timeInputRef.current && !isTimeFocused) {
             const currentVal = task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString();
             if (currentVal !== timeInputRef.current.value) {
                 timeInputRef.current.value = currentVal;
             }
         }
-    }, [task.estimated_time_minutes]);
-
-    const handleLocalTextChange = () => {
-        if (textInputRef.current) {
-            handleDebouncedChange(task.id, 'text', textInputRef.current.value, textDebounceTimeouts);
-        }
-    };
+    }, [task.estimated_time_minutes, isTimeFocused]);
     
-    const handleLocalTimeEstimateChange = () => {
-        if (timeInputRef.current) {
-            const value = timeInputRef.current.value;
-            const numValue = value === '' ? null : parseInt(value, 10);
-            if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
-                 handleDebouncedChange(task.id, 'estimated_time_minutes', numValue, timeEstimateDebounceTimeouts);
-            }
-        }
-    };
-    
-    const handleBlurText = () => {
-      if (textDebounceTimeouts.current[task.id]) clearTimeout(textDebounceTimeouts.current[task.id]);
-      if (textInputRef.current) {
-          handleDebouncedChange(task.id, 'text', textInputRef.current.value, textDebounceTimeouts);
-      }
-    };
-
-    const handleBlurTime = () => {
-      if (timeEstimateDebounceTimeouts.current[task.id]) clearTimeout(timeEstimateDebounceTimeouts.current[task.id]);
-       if (timeInputRef.current) {
-            const value = timeInputRef.current.value;
-            const numValue = value === '' ? null : parseInt(value, 10);
-            if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
-                 handleDebouncedChange(task.id, 'estimated_time_minutes', numValue, timeEstimateDebounceTimeouts);
-            }
-        }
-    };
-
-
     const isCurrentlyLoadingAI = isLoadingAI && loadingAITaskId === task.id;
     const { completedLeaves, totalLeaves } = toolMode === 'genie' ? calculateProgress(task) : { completedLeaves: 0, totalLeaves: 0 };
     const progressPercentage = totalLeaves > 0 ? (completedLeaves / totalLeaves) * 100 : (task.is_completed ? 100 : 0);
@@ -1532,8 +1502,16 @@ export function TaskBreakerTool() {
           <Input
             ref={textInputRef}
             defaultValue={task.text}
-            onChange={handleLocalTextChange}
-            onBlur={handleBlurText}
+            onFocus={() => setIsTextFocused(true)}
+            onBlur={(e) => { 
+                setIsTextFocused(false); 
+                handleDebouncedChange(task.id, 'text', e.target.value, textDebounceTimeouts, true);
+            }}
+            onChange={() => {
+                if (textInputRef.current) {
+                    handleDebouncedChange(task.id, 'text', textInputRef.current.value, textDebounceTimeouts);
+                }
+            }}
             className={`flex-grow bg-transparent border-0 focus:ring-0 h-auto py-0 text-sm ${task.is_completed && !hasChildren ? 'line-through text-muted-foreground' : ''}`}
             disabled={isSubmitting || isLoadingAI || !user}
             aria-label={`Texte de la tâche ${task.text}`}
@@ -1547,8 +1525,24 @@ export function TaskBreakerTool() {
                     type="number"
                     min="0"
                     defaultValue={task.estimated_time_minutes === null || task.estimated_time_minutes === undefined ? '' : task.estimated_time_minutes.toString()}
-                    onChange={handleLocalTimeEstimateChange}
-                    onBlur={handleBlurTime}
+                    onFocus={() => setIsTimeFocused(true)}
+                    onBlur={(e) => {
+                        setIsTimeFocused(false);
+                        const value = e.target.value;
+                        const numValue = value === '' ? null : parseInt(value, 10);
+                        if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
+                            handleDebouncedChange(task.id, 'estimated_time_minutes', numValue, timeEstimateDebounceTimeouts, true);
+                        }
+                    }}
+                    onChange={() => {
+                        if (timeInputRef.current) {
+                             const value = timeInputRef.current.value;
+                            const numValue = value === '' ? null : parseInt(value, 10);
+                            if (value === '' || (!isNaN(numValue!) && numValue! >= 0)) {
+                                handleDebouncedChange(task.id, 'estimated_time_minutes', numValue, timeEstimateDebounceTimeouts);
+                            }
+                        }
+                    }}
                     className="h-6 w-16 text-xs p-1 text-right"
                     placeholder="min"
                     disabled={isSubmitting || isLoadingAI || !user}
@@ -2110,4 +2104,3 @@ export function TaskBreakerTool() {
     </TooltipProvider>
   );
 }
-
