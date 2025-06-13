@@ -87,7 +87,7 @@ export interface TaskBreakerTask extends BaseEntity {
   is_completed: boolean;
   depth: number;
   order: number;
-  estimated_time_minutes?: number | null; // Added for time estimates
+  estimated_time_minutes?: number | null;
 }
 
 export interface TaskBreakerCustomPreset extends BaseEntity {
@@ -137,7 +137,7 @@ export type CreateTaskBreakerTaskDTO = Omit<TaskBreakerTask, 'id' | 'user_id' | 
   parent_id?: string | null;
   main_task_text_context?: string;
   order: number;
-  estimated_time_minutes?: number | null; // Added
+  estimated_time_minutes?: number | null;
 };
 export type CreateTaskBreakerCustomPresetDTO = Omit<TaskBreakerCustomPreset, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
 export type CreateTaskBreakerSavedBreakdownDTO = Omit<TaskBreakerSavedBreakdown, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sync_status' | 'last_synced_at'>;
@@ -217,3 +217,12 @@ export interface ImmersiveReaderDisplayPreset {
   isSystemPreset?: boolean;
   isDefault?: boolean; // Not directly used for selection logic, but can be for UI indicators
 }
+
+// Types for TimeFocus Tool Ambient Sounds
+export interface AmbientSound {
+  id: string; // e.g., 'nature_sounds', 'white_noise'
+  name: string; // e.g., "Forêt Paisible", "Bruit Blanc Calme"
+  filePath: string; // e.g., '/sounds/ambiance/nature.mp3'
+}
+
+```
