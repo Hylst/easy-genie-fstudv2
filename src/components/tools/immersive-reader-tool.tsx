@@ -112,20 +112,18 @@ export function ImmersiveReaderTool() {
 
   useEffect(() => {
     const textToDisplay = processedText.trim() || inputText.trim();
-    setWords(textToDisplay.split(/(\s+)/).filter(Boolean));
+    setWords(textToDisplay.split(/(\s+)/).filter(Boolean)); // Keep spaces as separate elements for structure
     setCurrentWordCharIndex(-1);
     if (synthesis?.speaking) synthesis.cancel();
     setIsSpeaking(false);
-    wordRefs.current = []; // Reset refs when text changes
+    wordRefs.current = []; 
   }, [inputText, processedText, synthesis]);
 
   useEffect(() => {
-    // Ensure refs array is correctly sized when words array changes
     wordRefs.current = wordRefs.current.slice(0, words.length);
   }, [words]);
 
 
-  // Scroll to current word effect
   useEffect(() => {
     if (toolMode === 'genie' && isSpeaking && currentWordCharIndex !== -1 && words.length > 0) {
         let charCount = 0;
@@ -133,19 +131,21 @@ export function ImmersiveReaderTool() {
 
         for (let i = 0; i < words.length; i++) {
             const word = words[i];
-            if (charCount <= currentWordCharIndex && currentWordCharIndex < charCount + word.length && word.trim() !== '') {
-                targetWordIndex = i;
-                break;
+            if (word.trim() !== '') { // Only consider non-whitespace words for target indexing
+                 if (charCount <= currentWordCharIndex && currentWordCharIndex < charCount + word.length) {
+                    targetWordIndex = i;
+                    break;
+                }
             }
             charCount += word.length;
         }
-
+        
         if (targetWordIndex !== -1) {
             const targetElement = wordRefs.current[targetWordIndex];
-            if (targetElement) {
+            if (targetElement && typeof targetElement.scrollIntoView === 'function') {
                 targetElement.scrollIntoView({
                     behavior: 'smooth',
-                    block: 'center',
+                    block: 'center', 
                     inline: 'nearest'
                 });
             }
@@ -154,7 +154,6 @@ export function ImmersiveReaderTool() {
   }, [currentWordCharIndex, words, isSpeaking, toolMode]);
 
 
-  // Speech Recognition Setup
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -221,7 +220,7 @@ export function ImmersiveReaderTool() {
       toast({ title: "Texte préparé !", description: "Le texte a été simplifié par le Génie." });
     } catch (error) {
       console.error("Error simplifying text:", error);
-      setProcessedText(inputText); // Fallback to original text on error
+      setProcessedText(inputText); 
       toast({ title: "Erreur de Simplification", description: (error as Error).message + " Le texte original sera utilisé.", variant: "destructive" });
     } finally {
       setIsLoadingAI(false);
@@ -249,7 +248,7 @@ export function ImmersiveReaderTool() {
       utteranceRef.current.onboundary = (event) => {
         if (event.name === 'word') { setCurrentWordCharIndex(event.charIndex); }
       };
-    } else { // 'magique' mode
+    } else { 
       const baseRate = 0.7;
       const rateIncrement = (1.3 - 0.7) / 4;
       utteranceRef.current.rate = Math.max(0.5, Math.min(2, baseRate + (intensity - 1) * rateIncrement));
@@ -312,13 +311,20 @@ export function ImmersiveReaderTool() {
 
   const textDisplayStyles = toolMode === 'genie' ? {
     fontSize: `${displaySettings.fontSize}px`,
-    fontFamily: displaySettings.fontFamily === 'System' ? 'inherit' : `'${displaySettings.fontFamily}'`,
+    fontFamily: displaySettings.fontFamily === 'System' ? 'inherit' 
+              : displaySettings.fontFamily === 'Sans-Serif' ? 'Arial, Helvetica, sans-serif'
+              : displaySettings.fontFamily === 'Serif' ? 'Georgia, "Times New Roman", serif'
+              : `'${displaySettings.fontFamily}'`, // For 'OpenDyslexic'
     lineHeight: displaySettings.lineHeight,
     letterSpacing: `${displaySettings.letterSpacing}px`,
     wordSpacing: `${displaySettings.wordSpacing}px`,
+  } : {};
+
+  const themeStyles = toolMode === 'genie' ? {
     backgroundColor: displaySettings.theme === 'dark' ? 'hsl(var(--card-foreground) / 0.95)' : displaySettings.theme === 'sepia' ? '#FBF0D9' : 'hsl(var(--card))',
     color: displaySettings.theme === 'dark' ? 'hsl(var(--card))' : displaySettings.theme === 'sepia' ? '#5B4636' : 'hsl(var(--card-foreground))',
-  } : { /* Styles pour le mode magique sont appliqués via classes prose */ };
+  } : {};
+
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
@@ -487,20 +493,14 @@ export function ImmersiveReaderTool() {
             </h3>
             <ScrollArea
                 className="h-[300px] w-full rounded-md border"
-                style={toolMode === 'genie' ? textDisplayStyles : {}} // Apply theme styles only in Genie mode
+                style={themeStyles}
             >
               <div
                 className={cn(
                     "p-4 text-base leading-relaxed whitespace-pre-wrap max-w-none",
-                    toolMode === 'magique' && "prose dark:prose-invert"
+                    toolMode === 'magique' && "prose dark:prose-invert" 
                   )}
-                style={toolMode === 'genie' ? {
-                  fontSize: `${displaySettings.fontSize}px`,
-                  fontFamily: displaySettings.fontFamily === 'System' ? 'inherit' : `'${displaySettings.fontFamily}'`,
-                  lineHeight: displaySettings.lineHeight,
-                  letterSpacing: `${displaySettings.letterSpacing}px`,
-                  wordSpacing: `${displaySettings.wordSpacing}px`,
-                } : {}}
+                style={textDisplayStyles}
               >
                 {toolMode === 'genie' && words.length > 0 ? (
                   words.map((word, index) => {
@@ -508,7 +508,6 @@ export function ImmersiveReaderTool() {
                     for (let k = 0; k < index; k++) { wordStartIndex += words[k].length; }
 
                     const isCurrentWord = currentWordCharIndex !== -1 &&
-                                          toolMode === 'genie' &&
                                           wordStartIndex <= currentWordCharIndex &&
                                           currentWordCharIndex < wordStartIndex + word.length &&
                                           word.trim() !== '';
@@ -517,7 +516,7 @@ export function ImmersiveReaderTool() {
                         key={index}
                         ref={el => { wordRefs.current[index] = el; }}
                         className={cn(
-                            word.trim() === '' ? '' : 'transition-colors duration-100', // Faster transition
+                            word.trim() === '' ? '' : 'transition-colors duration-100',
                             isCurrentWord ? "bg-primary/50 dark:bg-primary/60 rounded px-0.5" : ""
                         )}
                       >
@@ -550,4 +549,3 @@ export function ImmersiveReaderTool() {
     </Card>
   );
 }
-
