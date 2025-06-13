@@ -34,8 +34,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+} from "@/components/ui/alert-dialog"; // Removed AlertDialogTrigger as it's not directly used here.
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from '../ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -46,7 +45,6 @@ const DEFAULT_SPEECH_RATE_GENIE = 1;
 const IMMERSIVE_READER_SETTINGS_KEY = "easyGenieImmersiveReaderSettings_v1";
 const IMMERSIVE_READER_MODE_KEY = "easyGenieImmersiveReaderMode_v1";
 const DISPLAY_PRESETS_STORAGE_KEY = "easyGenieImmersiveReaderDisplayPresets_v1";
-
 
 const VALID_FONT_FAMILIES: ImmersiveReaderSettings['fontFamily'][] = ['System', 'Sans-Serif', 'Serif', 'OpenDyslexic'];
 
@@ -86,6 +84,7 @@ export function ImmersiveReaderTool() {
   const recognitionRef = useRef<any>(null);
 
   const [displayPresets, setDisplayPresets] = useState<ImmersiveReaderDisplayPreset[]>([]);
+  const [isLoadingUserPresets, setIsLoadingUserPresets] = useState<boolean>(false); // Added for consistency if fetching from DB later
   const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
   const [presetToDelete, setPresetToDelete] = useState<string | null>(null);
@@ -115,8 +114,17 @@ export function ImmersiveReaderTool() {
 
       const savedDisplayPresets = localStorage.getItem(DISPLAY_PRESETS_STORAGE_KEY);
       if (savedDisplayPresets) {
-        try { setDisplayPresets(JSON.parse(savedDisplayPresets)); }
-        catch (e) { console.error("Failed to parse display presets:", e); localStorage.removeItem(DISPLAY_PRESETS_STORAGE_KEY); }
+        try { 
+          const parsedPresets = JSON.parse(savedDisplayPresets) as ImmersiveReaderDisplayPreset[];
+          // Filter out presets with empty or whitespace-only names upon loading
+          const validPresets = parsedPresets.filter(p => p.name && p.name.trim() !== "");
+          setDisplayPresets(validPresets);
+        }
+        catch (e) { 
+          console.error("Failed to parse display presets:", e); 
+          localStorage.removeItem(DISPLAY_PRESETS_STORAGE_KEY); 
+          setDisplayPresets([]); // Initialize with empty array if parsing fails
+        }
       }
     }
   }, []);
@@ -150,6 +158,7 @@ export function ImmersiveReaderTool() {
     setCurrentWordCharIndex(-1);
     if (synthesis?.speaking) synthesis.cancel();
     setIsSpeaking(false);
+     wordRefs.current = []; // Reset refs when text changes
   }, [inputText, processedText, synthesis]);
 
   useEffect(() => {
@@ -347,11 +356,12 @@ export function ImmersiveReaderTool() {
       toast({ title: "Nom du préréglage requis", variant: "destructive" });
       return;
     }
-    if (displayPresets.some(p => p.name === newPresetName.trim())) {
+    const trimmedName = newPresetName.trim();
+    if (displayPresets.some(p => p.name === trimmedName)) {
       toast({ title: "Nom déjà utilisé", description: "Ce nom de préréglage existe déjà.", variant: "destructive" });
       return;
     }
-    const newPreset: ImmersiveReaderDisplayPreset = { name: newPresetName.trim(), settings: displaySettings };
+    const newPreset: ImmersiveReaderDisplayPreset = { name: trimmedName, settings: displaySettings };
     const updatedPresets = [...displayPresets, newPreset];
     setDisplayPresets(updatedPresets);
     saveDisplayPresetsToLocalStorage(updatedPresets);
@@ -383,7 +393,7 @@ export function ImmersiveReaderTool() {
     fontFamily: displaySettings.fontFamily === 'System' ? 'inherit' 
               : displaySettings.fontFamily === 'Sans-Serif' ? 'Arial, Helvetica, sans-serif'
               : displaySettings.fontFamily === 'Serif' ? 'Georgia, "Times New Roman", serif'
-              : `'${displaySettings.fontFamily}'`,
+              : `'${displaySettings.fontFamily}'`, // Ensure custom fonts are quoted
     lineHeight: displaySettings.lineHeight,
     letterSpacing: `${displaySettings.letterSpacing}px`,
     wordSpacing: `${displaySettings.wordSpacing}px`,
@@ -541,10 +551,13 @@ export function ImmersiveReaderTool() {
                                     <Select onValueChange={handleLoadDisplayPreset} value="">
                                       <SelectTrigger className="flex-grow"><SelectValue placeholder="Charger un préréglage..." /></SelectTrigger>
                                       <SelectContent>
-                                        {displayPresets.map(p => (
+                                        {isLoadingUserPresets && <div className="flex justify-center p-2"><Loader2 className="h-5 w-5 animate-spin"/></div>}
+                                        {!isLoadingUserPresets && displayPresets.length === 0 && (
+                                          <p className="p-2 text-sm text-muted-foreground">Aucun préréglage.</p>
+                                        )}
+                                        {!isLoadingUserPresets && displayPresets.filter(p => p.name && p.name.trim() !== "").map(p => (
                                           <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
                                         ))}
-                                        {displayPresets.length === 0 && <SelectItem value="" disabled>Aucun préréglage</SelectItem>}
                                       </SelectContent>
                                     </Select>
                                     <Button onClick={() => setShowSavePresetDialog(true)} size="icon" variant="outline" aria-label="Sauvegarder le préréglage actuel">
@@ -554,7 +567,7 @@ export function ImmersiveReaderTool() {
                                   {displayPresets.length > 0 && (
                                     <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-1">
                                       <Label className="text-xs text-muted-foreground">Mes Préréglages :</Label>
-                                      {displayPresets.map(p => (
+                                      {displayPresets.filter(p => p.name && p.name.trim() !== "").map(p => (
                                         <div key={p.name} className="flex items-center justify-between text-sm p-1 hover:bg-muted/30 rounded-md">
                                           <span className="truncate cursor-default" title={p.name}>{p.name}</span>
                                           <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => setPresetToDelete(p.name)}>
@@ -626,49 +639,45 @@ export function ImmersiveReaderTool() {
 
 
         {(processedText || inputText) && (
-          <div className="space-y-2 pt-4">
-            <h3 className="text-xl font-semibold text-primary">
-              {processedText && inputText !== processedText ? "Texte préparé pour la lecture :" : "Texte à lire :"}
-            </h3>
-            <ScrollArea
-                className="h-[300px] w-full rounded-md border"
-                style={themeStyles}
-            >
-              <div
-                className={cn(
-                    "p-4 text-base leading-relaxed whitespace-pre-wrap max-w-none",
-                    toolMode === 'magique' && "prose dark:prose-invert"
-                  )}
-                style={textDisplayStyles}
-              >
-                {toolMode === 'genie' && words.length > 0 ? (
-                  words.map((word, index) => {
-                    let wordStartIndex = 0;
-                    for (let k = 0; k < index; k++) { wordStartIndex += words[k].length; }
-
-                    const isCurrentWord = currentWordCharIndex !== -1 &&
-                                          word.trim() !== '' && 
-                                          wordStartIndex <= currentWordCharIndex &&
-                                          currentWordCharIndex < wordStartIndex + word.length;
-                    return (
-                      <span
-                        key={index}
-                        ref={el => { wordRefs.current[index] = el; }}
-                        className={cn(
-                            word.trim() === '' ? '' : 'transition-colors duration-100',
-                            isCurrentWord ? "bg-primary/50 dark:bg-primary/60 rounded px-0.5" : ""
-                        )}
-                      >
-                        {word}
-                      </span>
-                    );
-                  })
-                ) : (
-                  <p>{processedText || inputText}</p>
+          <ScrollArea
+              className="h-[300px] w-full rounded-md border"
+              style={themeStyles} // Appliquer les styles de thème au ScrollArea lui-même
+          >
+            <div
+              className={cn(
+                  "p-4 text-base leading-relaxed whitespace-pre-wrap max-w-none",
+                  toolMode === 'magique' && "prose dark:prose-invert" // Appliquer prose uniquement en mode magique
                 )}
-              </div>
-            </ScrollArea>
-          </div>
+              style={toolMode === 'genie' ? textDisplayStyles : {}} // Appliquer les styles typographiques en mode génie
+            >
+              {toolMode === 'genie' && words.length > 0 ? (
+                words.map((word, index) => {
+                  let wordStartIndex = 0;
+                  // Calculer l'index de début du mot actuel dans le texte complet
+                  for (let k = 0; k < index; k++) { wordStartIndex += words[k].length; }
+
+                  const isCurrentWord = currentWordCharIndex !== -1 &&
+                                        word.trim() !== '' && 
+                                        wordStartIndex <= currentWordCharIndex &&
+                                        currentWordCharIndex < wordStartIndex + word.length;
+                  return (
+                    <span
+                      key={index}
+                      ref={el => { wordRefs.current[index] = el; }}
+                      className={cn(
+                          word.trim() === '' ? '' : 'transition-colors duration-100', // éviter de styler les espaces
+                          isCurrentWord ? "bg-primary/50 dark:bg-primary/60 rounded px-0.5" : ""
+                      )}
+                    >
+                      {word}
+                    </span>
+                  );
+                })
+              ) : (
+                <p>{processedText || inputText}</p>
+              )}
+            </div>
+          </ScrollArea>
         )}
 
         {!user && (
