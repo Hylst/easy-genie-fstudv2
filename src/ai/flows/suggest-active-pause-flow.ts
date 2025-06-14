@@ -53,7 +53,7 @@ Break Duration Guidance:
 
 Instructions:
 - The suggestion should be concise and encouraging.
-- Ensure the output strictly adheres to the JSON schema defined for SuggestActivePauseOutput, which is a single string for 'suggestion'.
+- Ensure the output strictly adheres to the JSON schema defined for SuggestActivePauseOutput, which is an object like {"suggestion": "Votre suggestion ici..."}.
 - Only provide the JSON output. Do not include any other text or explanations.
 
 Example for intensity 3 and break duration 5 minutes:
@@ -89,3 +89,4 @@ const suggestActivePauseFlow = ai.defineFlow(
     return output;
   }
 );
+
