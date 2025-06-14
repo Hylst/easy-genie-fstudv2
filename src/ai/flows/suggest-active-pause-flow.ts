@@ -14,6 +14,7 @@ import {z} from 'genkit';
 const SuggestActivePauseInputSchema = z.object({
   intensityLevel: z.number().min(1).max(5).describe('The desired intensity/complexity of the pause suggestion (1=very simple, 5=more involved or multiple options).'),
   breakDurationMinutes: z.number().min(1).describe('The duration of the break in minutes, to tailor suggestions.'),
+  taskName: z.string().optional().describe('Optional name of the current task the user is working on.'),
 });
 export type SuggestActivePauseInput = z.infer<typeof SuggestActivePauseInputSchema>;
 
@@ -32,12 +33,15 @@ const suggestPausePrompt = ai.definePrompt({
   input: {schema: SuggestActivePauseInputSchema},
   output: {schema: SuggestActivePauseOutputSchema},
   prompt: `You are "Easy Genie", an AI assistant focused on well-being and productivity.
-Your task is to suggest a short, active pause activity for a user based on the desired intensity level and break duration.
+Your task is to suggest a short, active pause activity for a user based on the desired intensity level, break duration, and optionally the task they were working on.
 The suggestion should be actionable and promote physical or mental refreshment.
 The output must be in French.
 
 Intensity Level: {{{intensityLevel}}}
 Break Duration (minutes): {{{breakDurationMinutes}}}
+{{#if taskName}}
+Task User Was Working On: {{{taskName}}}
+{{/if}}
 
 Intensity Level Guidance for Pause Suggestions:
 - Level 1 (Minimal): Suggest one very simple, quick activity (e.g., "Étirez-vous simplement.", "Buvez un verre d'eau.").
@@ -51,18 +55,24 @@ Break Duration Guidance:
 - For medium breaks (5-10 min): Can suggest short walks, simple exercises.
 - For longer breaks (15+ min): Can suggest more involved activities or a combination.
 
+Contextualization (if taskName is provided):
+- If the task involves sitting/typing (e.g., "Rédaction rapport", "Coder fonctionnalité X"): Suggest stretching for wrists, neck, back, or looking away from the screen.
+- If the task involves physical activity (e.g., "Entraînement sportif"): Suggest gentle cool-down stretches or hydration.
+- If the task involves intense mental focus (e.g., "Résoudre problème complexe"): Suggest a short mindfulness exercise, looking at nature, or a completely unrelated simple physical movement.
+- If no taskName or a generic one, provide general suggestions based on intensity and duration.
+
 Instructions:
 - The suggestion should be concise and encouraging.
 - Ensure the output strictly adheres to the JSON schema defined for SuggestActivePauseOutput, which is an object like {"suggestion": "Votre suggestion ici..."}.
 - Only provide the JSON output. Do not include any other text or explanations.
 
-Example for intensity 3 and break duration 5 minutes:
+Example for intensity 3, break duration 5 minutes, task "Rédaction d'un email important":
 Output:
 {
-  "suggestion": "Prenez 5 minutes pour une courte marche rapide afin de vous dégourdir."
+  "suggestion": "Faites une pause de 5 minutes : étirez vos poignets et vos épaules, puis regardez au loin pour reposer vos yeux."
 }
 
-Based on the intensity and break duration, provide your suggestion.
+Based on the intensity, break duration, and task name (if any), provide your suggestion.
 `,
   config: {
     temperature: 0.75,
@@ -84,9 +94,13 @@ const suggestActivePauseFlow = ai.defineFlow(
   async (input) => {
     const {output} = await suggestPausePrompt(input);
     if (!output || typeof output.suggestion !== 'string') {
+        // If the model doesn't return a suggestion, or returns it in the wrong format
+        // throw an error or return a default suggestion.
+        // For now, we'll assume it mostly works, but in production, more robust error handling is needed.
         throw new Error("AI model did not return the expected output structure for active pause suggestion.");
     }
     return output;
   }
 );
 
+    

@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogTrigger, // Added import
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -74,13 +74,13 @@ const systemTimeFocusPresets: TimeFocusSystemPreset[] = [
 
 const ambientSoundsList: AmbientSound[] = [
   { id: 'none', name: "Aucun" },
-  { id: 'whiteNoise', name: "Bruit Blanc" },
-  { id: 'pinkNoise', name: "Bruit Rose" },
-  { id: 'brownianNoise', name: "Bruit Brownien" },
+  { id: 'whiteNoise', name: "Bruit Blanc Pur" },
+  { id: 'pinkNoise', name: "Bruit Rose Pur" },
+  { id: 'brownianNoise', name: "Bruit Brownien Pur" },
   { id: 'rain', name: "Pluie (Synth.)" },
   { id: 'waves', name: "Vagues (Synth.)" },
   { id: 'drone_50hz', name: "Drone 50Hz (Continu)" },
-  { id: 'binaural_10hz', name: "Battements Binauraux 10Hz" },
+  { id: 'binaural_10hz', name: "Battements Binauraux 10Hz (Alpha)" },
 ];
 
 export function TimeFocusTool() {
@@ -174,24 +174,40 @@ export function TimeFocusTool() {
     if (!audioContextRef.current && typeof window !== 'undefined') {
       try {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        masterAmbientGainNodeRef.current = audioContextRef.current.createGain();
-        masterAmbientGainNodeRef.current.connect(audioContextRef.current.destination);
-        masterAmbientGainNodeRef.current.gain.value = ambientSoundVolume;
+        if (audioContextRef.current) { 
+          masterAmbientGainNodeRef.current = audioContextRef.current.createGain();
+          masterAmbientGainNodeRef.current.connect(audioContextRef.current.destination);
+          masterAmbientGainNodeRef.current.gain.value = ambientSoundVolume;
+        } else {
+          console.error("Failed to create AudioContext instance.");
+          toast({ title: "Erreur Audio", description: "Impossible d'initialiser le moteur audio.", variant: "destructive" });
+          setNotificationSoundEnabled(false);
+          setAmbientSoundEnabled(false);
+          return null;
+        }
       } catch (e) {
-        console.warn("Web Audio API non supporté.", e);
+        console.error("Web Audio API non supporté ou erreur d'initialisation:", e);
+        toast({ title: "Audio Non Supporté", description: "Votre navigateur ne supporte pas l'audio nécessaire.", variant: "destructive" });
         setNotificationSoundEnabled(false);
         setAmbientSoundEnabled(false);
+        return null;
       }
     }
     if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume().catch(e => console.warn("Reprise AudioContext échouée:", e));
+      audioContextRef.current.resume().catch(e => {
+        console.warn("Reprise AudioContext échouée:", e);
+        toast({ title: "Erreur Audio", description: "Impossible de réactiver l'audio. Veuillez interagir avec la page.", variant: "destructive" });
+      });
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'running') {
+        console.warn(`AudioContext n'est pas actif après tentative de reprise. État: ${audioContextRef.current?.state}`);
     }
     return audioContextRef.current;
-  }, [ambientSoundVolume]);
+  }, [ambientSoundVolume, toast]);
 
 
   useEffect(() => {
-    getAudioContext(); // Initialize on mount
+    getAudioContext(); 
     return () => {
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close().catch(e => console.warn("Erreur fermeture AudioContext:", e));
@@ -231,7 +247,6 @@ export function TimeFocusTool() {
   }, [notificationSoundEnabled, getAudioContext]);
 
 
-  // --- Sound Generation Functions ---
   const stopAmbientSounds = useCallback(() => {
     ambientSourceNodesRef.current.forEach(node => {
       if (node instanceof AudioBufferSourceNode || node instanceof OscillatorNode) {
@@ -244,167 +259,113 @@ export function TimeFocusTool() {
   
   const playWhiteNoise = useCallback(() => {
     const ac = getAudioContext();
-    if (!ac || !masterAmbientGainNodeRef.current) return;
+    if (!ac || !masterAmbientGainNodeRef.current || ac.state !== 'running') return;
     stopAmbientSounds();
 
     const bufferSize = 2 * ac.sampleRate;
     const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
     const output = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      output[i] = Math.random() * 2 - 1;
-    }
+    for (let i = 0; i < bufferSize; i++) { output[i] = Math.random() * 2 - 1; }
     const whiteNoiseSource = ac.createBufferSource();
-    whiteNoiseSource.buffer = buffer;
-    whiteNoiseSource.loop = true;
-    whiteNoiseSource.connect(masterAmbientGainNodeRef.current);
-    whiteNoiseSource.start();
+    whiteNoiseSource.buffer = buffer; whiteNoiseSource.loop = true;
+    whiteNoiseSource.connect(masterAmbientGainNodeRef.current); whiteNoiseSource.start();
     ambientSourceNodesRef.current.push(whiteNoiseSource);
   }, [getAudioContext, stopAmbientSounds]);
 
   const playPinkNoise = useCallback(() => {
     const ac = getAudioContext();
-     if (!ac || !masterAmbientGainNodeRef.current) return;
+    if (!ac || !masterAmbientGainNodeRef.current || ac.state !== 'running') return;
     stopAmbientSounds();
 
-    const bufferSize = 2 * ac.sampleRate;
-    const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
+    const bufferSize = 2 * ac.sampleRate; const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
     const output = buffer.getChannelData(0);
     let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
     for (let i = 0; i < bufferSize; i++) {
         const white = Math.random() * 2 - 1;
-        b0 = 0.99886 * b0 + white * 0.0555179;
-        b1 = 0.99332 * b1 + white * 0.0750759;
-        b2 = 0.96900 * b2 + white * 0.1538520;
-        b3 = 0.86650 * b3 + white * 0.3104856;
-        b4 = 0.55000 * b4 + white * 0.5329522;
-        b5 = -0.7616 * b5 - white * 0.0168980;
-        output[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
-        output[i] *= 0.11; // (roughly) compensate for gain
-        b6 = white * 0.115926;
+        b0 = 0.99886 * b0 + white * 0.0555179; b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520; b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522; b5 = -0.7616 * b5 - white * 0.0168980;
+        output[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362; output[i] *= 0.11; b6 = white * 0.115926;
     }
-    const pinkNoiseSource = ac.createBufferSource();
-    pinkNoiseSource.buffer = buffer;
-    pinkNoiseSource.loop = true;
-    pinkNoiseSource.connect(masterAmbientGainNodeRef.current);
-    pinkNoiseSource.start();
+    const pinkNoiseSource = ac.createBufferSource(); pinkNoiseSource.buffer = buffer; pinkNoiseSource.loop = true;
+    pinkNoiseSource.connect(masterAmbientGainNodeRef.current); pinkNoiseSource.start();
     ambientSourceNodesRef.current.push(pinkNoiseSource);
   }, [getAudioContext, stopAmbientSounds]);
 
   const playBrownianNoise = useCallback(() => {
     const ac = getAudioContext();
-    if (!ac || !masterAmbientGainNodeRef.current) return;
+    if (!ac || !masterAmbientGainNodeRef.current || ac.state !== 'running') return;
     stopAmbientSounds();
-    const bufferSize = 2 * ac.sampleRate;
-    const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
-    const output = buffer.getChannelData(0);
-    let lastOut = 0.0;
+    const bufferSize = 2 * ac.sampleRate; const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
+    const output = buffer.getChannelData(0); let lastOut = 0.0;
     for (let i = 0; i < bufferSize; i++) {
-        const white = Math.random() * 2 - 1;
-        output[i] = (lastOut + (0.02 * white)) / 1.02;
-        lastOut = output[i];
-        output[i] *= 3.5; // (roughly) compensate for gain
+        const white = Math.random() * 2 - 1; output[i] = (lastOut + (0.02 * white)) / 1.02;
+        lastOut = output[i]; output[i] *= 3.5;
     }
-    const brownNoiseSource = ac.createBufferSource();
-    brownNoiseSource.buffer = buffer;
-    brownNoiseSource.loop = true;
-    brownNoiseSource.connect(masterAmbientGainNodeRef.current);
-    brownNoiseSource.start();
+    const brownNoiseSource = ac.createBufferSource(); brownNoiseSource.buffer = buffer; brownNoiseSource.loop = true;
+    brownNoiseSource.connect(masterAmbientGainNodeRef.current); brownNoiseSource.start();
     ambientSourceNodesRef.current.push(brownNoiseSource);
   }, [getAudioContext, stopAmbientSounds]);
 
   const playRainSound = useCallback(() => {
     const ac = getAudioContext();
-    if (!ac || !masterAmbientGainNodeRef.current) return;
+    if (!ac || !masterAmbientGainNodeRef.current || ac.state !== 'running') return;
     stopAmbientSounds();
 
-    const whiteNoise = ac.createBufferSource();
-    const bufferSize = 2 * ac.sampleRate;
-    const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
-    const data = buffer.getChannelData(0);
+    const whiteNoise = ac.createBufferSource(); const bufferSize = 2 * ac.sampleRate;
+    const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate); const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-    whiteNoise.buffer = buffer;
-    whiteNoise.loop = true;
+    whiteNoise.buffer = buffer; whiteNoise.loop = true;
 
-    const bandpass = ac.createBiquadFilter();
-    bandpass.type = "bandpass";
-    bandpass.frequency.value = 1000;
-    bandpass.Q.value = 0.5;
-
-    whiteNoise.connect(bandpass).connect(masterAmbientGainNodeRef.current);
-    whiteNoise.start();
-    ambientSourceNodesRef.current.push(whiteNoise); // Store source to stop later
+    const bandpass = ac.createBiquadFilter(); bandpass.type = "bandpass"; bandpass.frequency.value = 1000; bandpass.Q.value = 0.5;
+    whiteNoise.connect(bandpass).connect(masterAmbientGainNodeRef.current); whiteNoise.start();
+    ambientSourceNodesRef.current.push(whiteNoise);
   }, [getAudioContext, stopAmbientSounds]);
   
   const playWavesSound = useCallback(() => {
     const ac = getAudioContext();
-    if (!ac || !masterAmbientGainNodeRef.current) return;
+    if (!ac || !masterAmbientGainNodeRef.current || ac.state !== 'running') return;
     stopAmbientSounds();
 
-    const pinkNoiseSource = ac.createBufferSource(); // Using a simplified pink noise
-    const bufferSize = 2 * ac.sampleRate;
-    const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
-    const output = buffer.getChannelData(0);
+    const pinkNoiseSource = ac.createBufferSource(); const bufferSize = 2 * ac.sampleRate;
+    const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate); const output = buffer.getChannelData(0);
     let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
     for (let i=0; i<bufferSize; i++) {
-        const white = Math.random()*2-1;
-        b0=0.99886*b0+white*0.0555179; b1=0.99332*b1+white*0.0750759; b2=0.96900*b2+white*0.1538520;
+        const white = Math.random()*2-1; b0=0.99886*b0+white*0.0555179; b1=0.99332*b1+white*0.0750759; b2=0.96900*b2+white*0.1538520;
         b3=0.86650*b3+white*0.3104856; b4=0.55000*b4+white*0.5329522; b5=-0.7616*b5-white*0.0168980;
         output[i]=b0+b1+b2+b3+b4+b5+b6+white*0.5362; output[i]*=0.11; b6=white*0.115926;
     }
     pinkNoiseSource.buffer = buffer; pinkNoiseSource.loop = true;
-
-    const lowpass = ac.createBiquadFilter();
-    lowpass.type = "lowpass";
-    lowpass.frequency.value = 400; // Base cutoff
-
-    const lfo = ac.createOscillator();
-    lfo.type = "sine";
-    lfo.frequency.value = 0.2; // Slow oscillation for wave rhythm
-
-    const lfoGain = ac.createGain();
-    lfoGain.gain.value = 200; // Modulation depth for filter cutoff
-
+    const lowpass = ac.createBiquadFilter(); lowpass.type = "lowpass"; lowpass.frequency.value = 400;
+    const lfo = ac.createOscillator(); lfo.type = "sine"; lfo.frequency.value = 0.2;
+    const lfoGain = ac.createGain(); lfoGain.gain.value = 200;
     lfo.connect(lfoGain).connect(lowpass.frequency);
     pinkNoiseSource.connect(lowpass).connect(masterAmbientGainNodeRef.current);
-
     pinkNoiseSource.start(); lfo.start();
     ambientSourceNodesRef.current.push(pinkNoiseSource, lfo);
   }, [getAudioContext, stopAmbientSounds]);
 
   const playDroneSound = useCallback((hz = 50) => {
     const ac = getAudioContext();
-    if (!ac || !masterAmbientGainNodeRef.current) return;
+    if (!ac || !masterAmbientGainNodeRef.current || ac.state !== 'running') return;
     stopAmbientSounds();
-    const droneOsc = ac.createOscillator();
-    droneOsc.type = 'sine';
-    droneOsc.frequency.setValueAtTime(hz, ac.currentTime);
-    droneOsc.connect(masterAmbientGainNodeRef.current);
-    droneOsc.start();
+    const droneOsc = ac.createOscillator(); droneOsc.type = 'sine'; droneOsc.frequency.setValueAtTime(hz, ac.currentTime);
+    droneOsc.connect(masterAmbientGainNodeRef.current); droneOsc.start();
     ambientSourceNodesRef.current.push(droneOsc);
   }, [getAudioContext, stopAmbientSounds]);
   
   const playBinauralBeats = useCallback((baseFreq = 200, beatFreq = 10) => {
     const ac = getAudioContext();
-    if (!ac || !masterAmbientGainNodeRef.current) return;
+    if (!ac || !masterAmbientGainNodeRef.current || ac.state !== 'running') return;
     stopAmbientSounds();
 
-    const oscL = ac.createOscillator();
-    oscL.type = 'sine';
-    oscL.frequency.setValueAtTime(baseFreq, ac.currentTime);
-
-    const oscR = ac.createOscillator();
-    oscR.type = 'sine';
-    oscR.frequency.setValueAtTime(baseFreq + beatFreq, ac.currentTime);
-
+    const oscL = ac.createOscillator(); oscL.type = 'sine'; oscL.frequency.setValueAtTime(baseFreq, ac.currentTime);
+    const oscR = ac.createOscillator(); oscR.type = 'sine'; oscR.frequency.setValueAtTime(baseFreq + beatFreq, ac.currentTime);
     const merger = ac.createChannelMerger(2);
     const pannerL = ac.createStereoPanner(); pannerL.pan.value = -1;
     const pannerR = ac.createStereoPanner(); pannerR.pan.value = 1;
-
-    oscL.connect(pannerL).connect(merger, 0, 0); // Connect to left input of merger
-    oscR.connect(pannerR).connect(merger, 0, 1); // Connect to right input of merger
-    
+    oscL.connect(pannerL).connect(merger, 0, 0); oscR.connect(pannerR).connect(merger, 0, 1);
     merger.connect(masterAmbientGainNodeRef.current);
-
     oscL.start(); oscR.start();
     ambientSourceNodesRef.current.push(oscL, oscR);
     toast({ title: "Battements Binauraux Actifs", description: "Utilisez des écouteurs pour un effet optimal.", duration: 5000});
@@ -420,10 +381,8 @@ export function TimeFocusTool() {
       else if (currentAmbientSound === 'drone_50hz') playDroneSound(50);
       else if (currentAmbientSound === 'binaural_10hz') playBinauralBeats(200, 10);
       else stopAmbientSounds();
-    } else {
-      stopAmbientSounds();
-    }
-    return () => stopAmbientSounds(); // Cleanup on unmount or when dependencies change triggering stop
+    } else { stopAmbientSounds(); }
+    return () => stopAmbientSounds();
   }, [toolMode, ambientSoundEnabled, timerState.isRunning, timerState.currentMode, currentAmbientSound, playWhiteNoise, playPinkNoise, playBrownianNoise, playRainSound, playWavesSound, playDroneSound, playBinauralBeats, stopAmbientSounds]);
 
 
@@ -431,15 +390,16 @@ export function TimeFocusTool() {
     let durationInMinutes;
     const currentTimerMode = timerState.currentMode;
 
-    if ((toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1)) {
+    if (intensity === 1) { // Simple Timer for intensity 1 (both modes)
         durationInMinutes = currentTimerMode === 'work' ? configWorkDuration : 0; 
-    } else if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) {
+    } else if (intensity === 2 || intensity === 3) { // Standard Pomodoro for intensity 2 & 3 (both modes)
         durationInMinutes = currentTimerMode === 'work' ? 25 : currentTimerMode === 'shortBreak' ? 5 : 15;
-    } else { // intensity 4 or 5 (configurable pomodoro) for both modes
+    } else { // Configurable Pomodoro for intensity 4 & 5 (both modes)
         durationInMinutes = currentTimerMode === 'work' ? configWorkDuration : currentTimerMode === 'shortBreak' ? configShortBreakDuration : configLongBreakDuration;
     }
     return durationInMinutes * 60;
-  }, [timerState.currentMode, configWorkDuration, configShortBreakDuration, configLongBreakDuration, intensity, toolMode]);
+  }, [timerState.currentMode, configWorkDuration, configShortBreakDuration, configLongBreakDuration, intensity]);
+
 
   const handleSessionCompletion = useCallback(async () => {
     playGeneratedSound('endBell');
@@ -453,21 +413,16 @@ export function TimeFocusTool() {
     let dialogDescription = '';
     let aiSuggestion = '';
 
-    let currentCyclesConfig = configPomodorosPerCycle;
-    let currentWorkConfig = configWorkDuration;
-    let currentShortBreakConfig = configShortBreakDuration;
-    let currentLongBreakConfig = configLongBreakDuration;
-
-    if ((toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1)) {
-        currentCyclesConfig = 1; 
-    } else if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) {
-        currentWorkConfig = 25; currentShortBreakConfig = 5; currentLongBreakConfig = 15; currentCyclesConfig = 4;
-    }
+    let currentCyclesConfig = (intensity === 1) ? 1 : (intensity === 2 || intensity === 3) ? 4 : configPomodorosPerCycle;
+    let currentWorkConfig = (intensity === 1) ? configWorkDuration : (intensity === 2 || intensity === 3) ? 25 : configWorkDuration;
+    let currentShortBreakConfig = (intensity === 1) ? 0 : (intensity === 2 || intensity === 3) ? 5 : configShortBreakDuration;
+    let currentLongBreakConfig = (intensity === 1) ? 0 : (intensity === 2 || intensity === 3) ? 15 : configLongBreakDuration;
     
     if (timerState.currentMode === 'work') {
       newTotalPomodorosCompleted++;
       if (toolMode === 'genie') setCompletedWorkSessionsThisTask(prev => prev + 1);
-      const workDurationThisSession = getCurrentModeFullDuration(); 
+      
+      const workDurationThisSession = getCurrentModeFullDuration();
       if (toolMode === 'genie') setAccumulatedWorkTime(prev => prev + (workDurationThisSession - timerState.timeLeft));
 
       if (intensity === 1) { 
@@ -479,11 +434,11 @@ export function TimeFocusTool() {
           dialogDescription = `Votre session de concentration de ${currentWorkConfig} minutes${taskName ? ` sur "${taskName}"` : ''} est terminée.`;
         }
         newCurrentPomodoroCycle = 1; 
-      } else { // Pomodoro modes (intensity 2-5)
+      } else { 
         if (newTotalPomodorosCompleted % currentCyclesConfig === 0) {
           nextMode = 'longBreak'; newTimeLeft = currentLongBreakConfig * 60;
           dialogTitle = "Cycle Terminé ! Pause Longue Méritée !";
-          if (toolMode === 'genie') {
+           if (toolMode === 'genie') {
             dialogDescription = `Cycle complet ! Vous avez fait ${completedWorkSessionsThisTask + 1} sessions pour un total de ${formatTimeDisplay(accumulatedWorkTime + workDurationThisSession)} sur '${taskName || "cette tâche"}'. Pause longue de ${currentLongBreakConfig} min.`;
           } else {
              dialogDescription = `Vous avez complété ${currentCyclesConfig} sessions. Prenez une pause de ${currentLongBreakConfig} minutes.`;
@@ -499,7 +454,7 @@ export function TimeFocusTool() {
         }
         newCurrentPomodoroCycle = (newTotalPomodorosCompleted % currentCyclesConfig !== 0) ? timerState.currentPomodoroCycle + 1 : 1;
       }
-    } else { // Break mode finished
+    } else { 
       nextMode = 'work'; newTimeLeft = currentWorkConfig * 60;
       dialogTitle = "Pause Terminée !";
       dialogDescription = `Retour au travail pour une session de ${currentWorkConfig} minutes.`;
@@ -509,7 +464,11 @@ export function TimeFocusTool() {
       setIsFetchingAIPause(true);
       try {
         const breakDuration = nextMode === 'shortBreak' ? currentShortBreakConfig : currentLongBreakConfig;
-        const result = await suggestActivePause({ intensityLevel: intensity, breakDurationMinutes: breakDuration });
+        const result = await suggestActivePause({ 
+            intensityLevel: intensity, 
+            breakDurationMinutes: breakDuration,
+            taskName: taskName || currentMicroObjective || undefined,
+        });
         aiSuggestion = result.suggestion; setLastAIPauseSuggestion(aiSuggestion);
       } catch (error) { console.error("Error fetching AI pause suggestion:", error); aiSuggestion = "Le Génie est en pause aussi, profitez bien de la vôtre !"; }
       finally { setIsFetchingAIPause(false); }
@@ -517,7 +476,7 @@ export function TimeFocusTool() {
     setCompletionMessage({ title: dialogTitle, description: dialogDescription, aiSuggestion });
     setShowCompletionDialog(true);
     setTimerState(prev => ({ ...prev, timeLeft: newTimeLeft, currentMode: nextMode, currentPomodoroCycle: newCurrentPomodoroCycle, totalPomodorosCompleted: newTotalPomodorosCompleted, lastTickPlayedAt: newTimeLeft, halfwayNotified: false, pomodorosInCycle: currentCyclesConfig }));
-  }, [timerState, intensity, configWorkDuration, configShortBreakDuration, configLongBreakDuration, configPomodorosPerCycle, playGeneratedSound, taskName, toolMode, aiPauseSuggestionsEnabled, accumulatedWorkTime, completedWorkSessionsThisTask, getCurrentModeFullDuration]);
+  }, [timerState, intensity, configWorkDuration, configShortBreakDuration, configLongBreakDuration, configPomodorosPerCycle, playGeneratedSound, taskName, toolMode, aiPauseSuggestionsEnabled, accumulatedWorkTime, completedWorkSessionsThisTask, getCurrentModeFullDuration, currentMicroObjective]);
 
   useEffect(() => {
     if (timerState.isRunning && timerState.timeLeft > 0) {
@@ -537,17 +496,17 @@ export function TimeFocusTool() {
   }, [timerState.isRunning, timerState.timeLeft, handleSessionCompletion, getCurrentModeFullDuration, timerState.lastTickPlayedAt, timerState.halfwayNotified, playGeneratedSound]);
 
  useEffect(() => {
-    if (timerState.isRunning) return; // Don't reset if timer is running
+    if (timerState.isRunning) return;
 
     let workDur, shortBr, longBr, cycles;
-    if ((toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1)) {
+    if (intensity === 1) {
       workDur = configWorkDuration; shortBr = 0; longBr = 0; cycles = 1;
-    } else if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) {
+    } else if (intensity === 2 || intensity === 3) {
       workDur = 25; shortBr = 5; longBr = 15; cycles = 4;
-      if (toolMode === 'genie' || toolMode === 'magique') { // Apply for both modes, config is not editable here anyway
+      if (toolMode === 'genie' || toolMode === 'magique') {
           setConfigWorkDuration(25); setConfigShortBreakDuration(5); setConfigLongBreakDuration(15); setConfigPomodorosPerCycle(4);
       }
-    } else { // intensity 4 or 5 for both modes
+    } else { 
       workDur = configWorkDuration; shortBr = configShortBreakDuration; longBr = configLongBreakDuration; cycles = configPomodorosPerCycle;
     }
     
@@ -557,7 +516,7 @@ export function TimeFocusTool() {
 
 
   const handleStartPause = () => {
-    getAudioContext(); // Ensure AudioContext is active
+    getAudioContext(); 
     if (toolMode === 'genie' && microSessionObjectiveEnabled && timerState.currentMode === 'work' && !timerState.isRunning && timerState.timeLeft === getCurrentModeFullDuration()) {
       setShowMicroObjectiveDialog(true); return;
     }
@@ -582,11 +541,11 @@ export function TimeFocusTool() {
   const handleReset = () => {
     if (timerId.current) clearTimeout(timerId.current);
     let initialWorkDuration, initialPomodorosPerCycle;
-    if ((toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1)) {
+    if (intensity === 1) {
       initialWorkDuration = configWorkDuration; initialPomodorosPerCycle = 1;
-    } else if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) {
+    } else if (intensity === 2 || intensity === 3) {
       initialWorkDuration = 25; initialPomodorosPerCycle = 4;
-    } else { // intensity 4 or 5 for both modes
+    } else { 
       initialWorkDuration = configWorkDuration; initialPomodorosPerCycle = configPomodorosPerCycle;
     }
     setTimerState({ isRunning: false, timeLeft: initialWorkDuration * 60, currentMode: 'work', pomodorosInCycle: initialPomodorosPerCycle, currentPomodoroCycle: 1, totalPomodorosCompleted: 0, lastTickPlayedAt: initialWorkDuration * 60, halfwayNotified: false });
@@ -598,11 +557,11 @@ export function TimeFocusTool() {
     if (timerState.currentMode === 'shortBreak' || timerState.currentMode === 'longBreak') {
       if (timerId.current) clearTimeout(timerId.current);
       let workDurationForNextSession;
-       if ((toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1)) {
+       if (intensity === 1) {
         workDurationForNextSession = configWorkDuration;
-      } else if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) {
+      } else if (intensity === 2 || intensity === 3) {
         workDurationForNextSession = 25;
-      } else { // intensity 4 or 5 for both modes
+      } else { 
         workDurationForNextSession = configWorkDuration;
       }
       const newTimeLeft = workDurationForNextSession * 60;
@@ -649,7 +608,9 @@ export function TimeFocusTool() {
 
   const handleLoadPreset = (preset: TimeFocusDisplayPreset) => {
     setConfigWorkDuration(preset.work); setConfigShortBreakDuration(preset.short); setConfigLongBreakDuration(preset.long); setConfigPomodorosPerCycle(preset.cycle);
-    if (intensity < 4) setIntensity(4); // Ensure intensity allows config if loading a preset
+    if (intensity < 4 && !(intensity === 1 && preset.cycle === 1)) setIntensity(4); // Ensure intensity allows config if loading a complex preset
+    else if (intensity === 1 && preset.cycle > 1) setIntensity(4); // If simple timer mode was active, but preset has cycles, switch intensity
+    
     const newTimeLeft = preset.work * 60;
     setTimerState(prev => ({ ...prev, isRunning: false, timeLeft: newTimeLeft, currentMode: 'work', pomodorosInCycle: preset.cycle, currentPomodoroCycle: 1, totalPomodorosCompleted: 0, lastTickPlayedAt: newTimeLeft, halfwayNotified: false }));
     setShowPresetDialog(false); toast({ title: `Preset "${preset.name}" chargé!` });
@@ -676,17 +637,17 @@ export function TimeFocusTool() {
   const handleToggleMicroObjective = () => { setMicroSessionObjectiveEnabled(prev => !prev); toast({ title: `Objectifs de micro-session ${!microSessionObjectiveEnabled ? "activés" : "désactivés"}` }); };
   const handleToggleAIPause = () => { setAiPauseSuggestionsEnabled(prev => !prev); toast({ title: `Suggestions de pause IA ${!aiPauseSuggestionsEnabled ? "activées" : "désactivées"}` }); };
   
-  const isSimpleTimerDurationEditable = !timerState.isRunning && ((toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1));
-  const isPomodoroConfigEditable = !timerState.isRunning && ((toolMode === 'magique' && intensity >= 4) || (toolMode === 'genie' && intensity >= 4));
-  const showSimpleTimerConfig = (toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1);
-  const showPomodoroConfigCard = ((toolMode === 'magique' && intensity >= 2) || (toolMode === 'genie' && intensity >=2));
+  const isSimpleTimerDurationEditable = !timerState.isRunning && (intensity === 1);
+  const isPomodoroConfigEditable = !timerState.isRunning && (intensity >= 4);
+  const showSimpleTimerConfig = intensity === 1;
+  const showPomodoroConfigCard = intensity >=2;
 
   let displayConfigWork = configWorkDuration;
   let displayConfigShort = configShortBreakDuration;
   let displayConfigLong = configLongBreakDuration;
   let displayConfigCycle = configPomodorosPerCycle;
 
-  if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) {
+  if (intensity === 2 || intensity === 3) {
     displayConfigWork = 25; displayConfigShort = 5; displayConfigLong = 15; displayConfigCycle = 4;
   }
 
@@ -729,7 +690,7 @@ export function TimeFocusTool() {
                 {formatTimeDisplay(timerState.timeLeft)}
             </div>
             <Progress value={progressPercentage} className="w-full h-3" />
-            {(intensity > 1) && ( // Show for all Pomodoro modes
+            {(intensity > 1) && ( 
                 <p className="text-sm text-muted-foreground mt-3">Session {timerState.currentPomodoroCycle} / {timerState.pomodorosInCycle} | Total : {timerState.totalPomodorosCompleted}</p>
             )}
             {toolMode === 'genie' && currentMicroObjective && timerState.isRunning && timerState.currentMode === 'work' && (
@@ -862,3 +823,4 @@ export function TimeFocusTool() {
     </Card>
   );
 }
+
