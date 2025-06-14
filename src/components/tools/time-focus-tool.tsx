@@ -108,7 +108,7 @@ export function TimeFocusTool() {
   const [completedWorkSessionsThisTask, setCompletedWorkSessionsThisTask] = useState(0);
   const [ambientSoundEnabled, setAmbientSoundEnabled] = useState<boolean>(false);
   const [currentAmbientSound, setCurrentAmbientSound] = useState<AmbientSound['id']>(ambientSoundsList[0].id);
-  const [ambientSoundVolume, setAmbientSoundVolume] = useState<number>(0.1); // Lowered default volume for synthetic sounds
+  const [ambientSoundVolume, setAmbientSoundVolume] = useState<number>(0.1);
   const [microSessionObjectiveEnabled, setMicroSessionObjectiveEnabled] = useState<boolean>(false);
   const [currentMicroObjective, setCurrentMicroObjective] = useState<string>('');
   const [showMicroObjectiveDialog, setShowMicroObjectiveDialog] = useState<boolean>(false);
@@ -430,14 +430,12 @@ export function TimeFocusTool() {
     let durationInMinutes;
     const currentTimerMode = timerState.currentMode;
 
-    if (toolMode === 'magique') {
-        if (intensity === 1) durationInMinutes = currentTimerMode === 'work' ? configWorkDuration : 0; // simple timer only work mode
-        else if (intensity === 2 || intensity === 3) durationInMinutes = currentTimerMode === 'work' ? 25 : currentTimerMode === 'shortBreak' ? 5 : 15;
-        else durationInMinutes = currentTimerMode === 'work' ? configWorkDuration : currentTimerMode === 'shortBreak' ? configShortBreakDuration : configLongBreakDuration;
-    } else { // toolMode === 'genie'
-        if (intensity === 1) durationInMinutes = currentTimerMode === 'work' ? configWorkDuration : 0; // simple timer only work mode
-        else if (intensity === 2 || intensity === 3) durationInMinutes = currentTimerMode === 'work' ? 25 : currentTimerMode === 'shortBreak' ? 5 : 15;
-        else durationInMinutes = currentTimerMode === 'work' ? configWorkDuration : currentTimerMode === 'shortBreak' ? configShortBreakDuration : configLongBreakDuration;
+    if (intensity === 1) { // Simple timer mode
+        durationInMinutes = currentTimerMode === 'work' ? configWorkDuration : 0; // Only work mode applies
+    } else if ((intensity === 2 || intensity === 3)) {
+        durationInMinutes = currentTimerMode === 'work' ? 25 : currentTimerMode === 'shortBreak' ? 5 : 15;
+    } else { // Intensity 4 or 5 (configurable pomodoro)
+        durationInMinutes = currentTimerMode === 'work' ? configWorkDuration : currentTimerMode === 'shortBreak' ? configShortBreakDuration : configLongBreakDuration;
     }
     return durationInMinutes * 60;
   }, [timerState.currentMode, configWorkDuration, configShortBreakDuration, configLongBreakDuration, intensity, toolMode]);
@@ -454,14 +452,17 @@ export function TimeFocusTool() {
     let dialogDescription = '';
     let aiSuggestion = '';
 
-    let currentCyclesConfig, currentWorkConfig, currentShortBreakConfig, currentLongBreakConfig;
+    let currentCyclesConfig = configPomodorosPerCycle;
+    let currentWorkConfig = configWorkDuration;
+    let currentShortBreakConfig = configShortBreakDuration;
+    let currentLongBreakConfig = configLongBreakDuration;
 
-    if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) {
-      currentWorkConfig = 25; currentShortBreakConfig = 5; currentLongBreakConfig = 15; currentCyclesConfig = 4;
-    } else {
-      currentWorkConfig = configWorkDuration; currentShortBreakConfig = configShortBreakDuration; currentLongBreakConfig = configLongBreakDuration; currentCyclesConfig = configPomodorosPerCycle;
+    if (intensity === 1) {
+        currentCyclesConfig = 1; // Simple timer implies 1 cycle for logic
+    } else if (intensity === 2 || intensity === 3) {
+        currentWorkConfig = 25; currentShortBreakConfig = 5; currentLongBreakConfig = 15; currentCyclesConfig = 4;
     }
-    if (intensity === 1) currentCyclesConfig = 1; // Simple timer implies 1 cycle for logic
+    // For intensity 4 & 5, use values from config state (already set in currentWorkConfig etc.)
 
     if (timerState.currentMode === 'work') {
       newTotalPomodorosCompleted++;
@@ -469,28 +470,27 @@ export function TimeFocusTool() {
       const workDurationThisSession = getCurrentModeFullDuration(); 
       if (toolMode === 'genie') setAccumulatedWorkTime(prev => prev + (workDurationThisSession - timerState.timeLeft));
 
-
-      if (intensity === 1) { // Simple Timer for both modes
+      if (intensity === 1) { // Simple Timer
         nextMode = 'work'; newTimeLeft = currentWorkConfig * 60;
         dialogTitle = "Temps écoulé !";
         dialogDescription = `Votre session de concentration de ${currentWorkConfig} minutes${taskName ? ` sur "${taskName}"` : ''} est terminée.`;
         if (toolMode === 'genie') {
           dialogDescription = `Vous avez complété ${completedWorkSessionsThisTask + 1} session(s) pour un total de ${formatTimeDisplay(accumulatedWorkTime + workDurationThisSession)} sur la tâche '${taskName || "non définie"}'.`;
         }
-        newCurrentPomodoroCycle = 1;
-      } else { // Pomodoro modes
+        newCurrentPomodoroCycle = 1; // Reset cycle for simple timer logic
+      } else { // Pomodoro modes (intensity 2-5)
         if (newTotalPomodorosCompleted % currentCyclesConfig === 0) {
           nextMode = 'longBreak'; newTimeLeft = currentLongBreakConfig * 60;
           dialogTitle = "Cycle Terminé ! Pause Longue Méritée !";
           dialogDescription = `Vous avez complété ${currentCyclesConfig} sessions. Prenez une pause de ${currentLongBreakConfig} minutes.`;
-          if (toolMode === 'genie') {
+           if (toolMode === 'genie') {
             dialogDescription = `Cycle complet ! Vous avez fait ${completedWorkSessionsThisTask + 1} sessions pour un total de ${formatTimeDisplay(accumulatedWorkTime + workDurationThisSession)} sur '${taskName || "cette tâche"}'. Pause longue de ${currentLongBreakConfig} min.`;
           }
         } else {
           nextMode = 'shortBreak'; newTimeLeft = currentShortBreakConfig * 60;
           dialogTitle = "Session de Travail Terminée !";
           dialogDescription = `Bravo ! Prenez une petite pause de ${currentShortBreakConfig} minutes.`;
-          if (toolMode === 'genie') {
+           if (toolMode === 'genie') {
             dialogDescription = `Session terminée ! Vous avez fait ${completedWorkSessionsThisTask + 1} sessions pour un total de ${formatTimeDisplay(accumulatedWorkTime + workDurationThisSession)} sur '${taskName || "cette tâche"}'. Pause de ${currentShortBreakConfig} min.`;
           }
         }
@@ -533,17 +533,22 @@ export function TimeFocusTool() {
     return () => { if (timerId.current) clearTimeout(timerId.current); };
   }, [timerState.isRunning, timerState.timeLeft, handleSessionCompletion, getCurrentModeFullDuration, timerState.lastTickPlayedAt, timerState.halfwayNotified, playGeneratedSound]);
 
-  useEffect(() => {
+ useEffect(() => {
     if (timerState.isRunning) return; // Don't reset if timer is running
-    let workDur = configWorkDuration, shortBr = configShortBreakDuration, longBr = configLongBreakDuration, cycles = configPomodorosPerCycle;
 
-    if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) {
-        workDur = 25; shortBr = 5; longBr = 15; cycles = 4;
-        setConfigWorkDuration(25);setConfigShortBreakDuration(5);setConfigLongBreakDuration(15);setConfigPomodorosPerCycle(4);
+    let workDur, shortBr, longBr, cycles;
+    if (intensity === 1) {
+      workDur = configWorkDuration; shortBr = 0; longBr = 0; cycles = 1;
+    } else if (intensity === 2 || intensity === 3) {
+      workDur = 25; shortBr = 5; longBr = 15; cycles = 4;
+      setConfigWorkDuration(25);setConfigShortBreakDuration(5);setConfigLongBreakDuration(15);setConfigPomodorosPerCycle(4);
+    } else { // intensity 4 or 5
+      workDur = configWorkDuration; shortBr = configShortBreakDuration; longBr = configLongBreakDuration; cycles = configPomodorosPerCycle;
     }
-    const newTimeLeft = (intensity === 1 ? workDur : (timerState.currentMode === 'work' ? workDur : timerState.currentMode === 'shortBreak' ? shortBr : longBr)) * 60;
+    
+    const newTimeLeft = (timerState.currentMode === 'work' ? workDur : timerState.currentMode === 'shortBreak' ? shortBr : longBr) * 60;
     setTimerState(prev => ({ ...prev, timeLeft: newTimeLeft, pomodorosInCycle: cycles, lastTickPlayedAt: newTimeLeft, halfwayNotified: false }));
-  }, [intensity, configWorkDuration, configShortBreakDuration, configLongBreakDuration, configPomodorosPerCycle, timerState.isRunning, toolMode, timerState.currentMode]);
+  }, [intensity, configWorkDuration, configShortBreakDuration, configLongBreakDuration, configPomodorosPerCycle, timerState.isRunning, timerState.currentMode]);
 
 
   const handleStartPause = () => {
@@ -572,11 +577,11 @@ export function TimeFocusTool() {
   const handleReset = () => {
     if (timerId.current) clearTimeout(timerId.current);
     let initialWorkDuration, initialPomodorosPerCycle;
-    if ((toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1)) {
+    if (intensity === 1) {
       initialWorkDuration = configWorkDuration; initialPomodorosPerCycle = 1;
-    } else if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) {
+    } else if (intensity === 2 || intensity === 3) {
       initialWorkDuration = 25; initialPomodorosPerCycle = 4;
-    } else {
+    } else { // intensity 4 or 5
       initialWorkDuration = configWorkDuration; initialPomodorosPerCycle = configPomodorosPerCycle;
     }
     setTimerState({ isRunning: false, timeLeft: initialWorkDuration * 60, currentMode: 'work', pomodorosInCycle: initialPomodorosPerCycle, currentPomodoroCycle: 1, totalPomodorosCompleted: 0, lastTickPlayedAt: initialWorkDuration * 60, halfwayNotified: false });
@@ -588,8 +593,8 @@ export function TimeFocusTool() {
     if (timerState.currentMode === 'shortBreak' || timerState.currentMode === 'longBreak') {
       if (timerId.current) clearTimeout(timerId.current);
       let workDurationForNextSession;
-      if ((toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1)) workDurationForNextSession = configWorkDuration;
-      else if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) workDurationForNextSession = 25;
+      if (intensity === 1) workDurationForNextSession = configWorkDuration;
+      else if (intensity === 2 || intensity === 3) workDurationForNextSession = 25;
       else workDurationForNextSession = configWorkDuration;
       const newTimeLeft = workDurationForNextSession * 60;
       setTimerState(prev => ({ ...prev, isRunning: false, timeLeft: newTimeLeft, currentMode: 'work', lastTickPlayedAt: newTimeLeft, halfwayNotified: false }));
@@ -634,8 +639,7 @@ export function TimeFocusTool() {
 
   const handleLoadPreset = (preset: TimeFocusDisplayPreset) => {
     setConfigWorkDuration(preset.work); setConfigShortBreakDuration(preset.short); setConfigLongBreakDuration(preset.long); setConfigPomodorosPerCycle(preset.cycle);
-    if (toolMode === 'magique' && intensity < 4) setIntensity(4);
-    else if (toolMode === 'genie' && intensity < 4) setIntensity(4); // Ensure intensity allows config if loading a preset
+    if (intensity < 4) setIntensity(4); // Ensure intensity allows config if loading a preset
     const newTimeLeft = preset.work * 60;
     setTimerState(prev => ({ ...prev, isRunning: false, timeLeft: newTimeLeft, currentMode: 'work', pomodorosInCycle: preset.cycle, currentPomodoroCycle: 1, totalPomodorosCompleted: 0, lastTickPlayedAt: newTimeLeft, halfwayNotified: false }));
     setShowPresetDialog(false); toast({ title: `Preset "${preset.name}" chargé!` });
@@ -665,15 +669,14 @@ export function TimeFocusTool() {
   const isSimpleTimerDurationEditable = !timerState.isRunning && ((toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1));
   const isPomodoroConfigEditable = !timerState.isRunning && ((toolMode === 'magique' && intensity >= 4) || (toolMode === 'genie' && intensity >= 4));
   const showSimpleTimerConfig = (toolMode === 'magique' && intensity === 1) || (toolMode === 'genie' && intensity === 1);
-  const showPomodoroConfigCard = (toolMode === 'magique' && intensity >= 2 && intensity !==3 && intensity !==1) || (toolMode === 'genie' && intensity >= 2 && intensity !==3 && intensity !==1);
-  // const showPomodoroConfigCard = (toolMode === 'magique' && intensity >= 4) || (toolMode === 'genie' && intensity >= 2); // Buggy
+  const showPomodoroConfigCard = (intensity >= 2); // Always show if not simple timer (intensity 1)
 
   let displayConfigWork = configWorkDuration;
   let displayConfigShort = configShortBreakDuration;
   let displayConfigLong = configLongBreakDuration;
   let displayConfigCycle = configPomodorosPerCycle;
 
-  if ((toolMode === 'magique' && (intensity === 2 || intensity === 3)) || (toolMode === 'genie' && (intensity === 2 || intensity === 3))) {
+  if (intensity === 2 || intensity === 3) { // Apply fixed Pomodoro for intensity 2 & 3 regardless of toolMode
     displayConfigWork = 25; displayConfigShort = 5; displayConfigLong = 15; displayConfigCycle = 4;
   }
 
@@ -716,7 +719,7 @@ export function TimeFocusTool() {
                 {formatTimeDisplay(timerState.timeLeft)}
             </div>
             <Progress value={progressPercentage} className="w-full h-3" />
-            {(toolMode === 'magique' && intensity > 1 || toolMode === 'genie' && intensity > 1) && (
+            {(intensity > 1) && ( // Show for all Pomodoro modes
                 <p className="text-sm text-muted-foreground mt-3">Session {timerState.currentPomodoroCycle} / {timerState.pomodorosInCycle} | Total : {timerState.totalPomodorosCompleted}</p>
             )}
             {toolMode === 'genie' && currentMicroObjective && timerState.isRunning && timerState.currentMode === 'work' && (
@@ -849,5 +852,3 @@ export function TimeFocusTool() {
     </Card>
   );
 }
-
-```
